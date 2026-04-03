@@ -119,6 +119,38 @@ export default function GhausiaCollection() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [payModal, setPayModal] = useState(false);
   const [payForm, setPayForm] = useState({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
+  const [statusMenuOpen, setStatusMenuOpen] = useState(null);
+
+  const STATUS_OPTIONS = ['Pending', 'Dispatched', 'Received Back', 'Completed'];
+
+  const statusMeta = {
+    'Pending': { className: 'badge badge-pending', label: 'Pending' },
+    'Dispatched': { className: 'badge badge-dispatched', label: 'Dispatched' },
+    'Received Back': { className: 'badge badge-received', label: 'Received Back' },
+    'Completed': { className: 'badge badge-completed', label: 'Completed' },
+    'In Progress': { className: 'badge badge-inprogress', label: 'In Progress' },
+  };
+
+  const setLotStatus = (lot, newStatus) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const lotUpdate = { status: newStatus };
+    if (newStatus === 'Dispatched') {
+      lotUpdate.dispatchDate = today;
+    }
+    if (newStatus === 'Received Back' || newStatus === 'Completed') {
+      lotUpdate.receivedBackDate = today;
+    }
+    updateLot(lot.id, lotUpdate);
+
+    const ledgerStatus = newStatus === 'Dispatched' ? 'In Progress' : (newStatus === 'Completed' ? 'Completed' : newStatus);
+    updatePartyEdit(lot.id, {
+      overrideStatus: ledgerStatus,
+      completeDate: newStatus === 'Completed' ? today : '',
+    });
+
+    setStatusMenuOpen(null);
+  };
+
 
   const filtered = useMemo(() => ghausiaLots.filter(l => {
     const q = search.toLowerCase();
@@ -303,32 +335,41 @@ export default function GhausiaCollection() {
                       ))}
                     </select>
                   </td>
-                  <td>
-                    <div>
-                      <select
-                        className="form-select"
-                        style={{ width: '100%', padding: '6px 8px', fontSize: 13 }}
-                        value={l.status}
-                        onChange={e => {
-                          const newStatus = e.target.value;
-                          const today = new Date().toISOString().slice(0, 10);
-                          updateLot(l.id, {
-                            status: newStatus,
-                            dispatchDate: newStatus === 'Dispatched' ? today : l.dispatchDate,
-                            receivedBackDate: newStatus === 'Received Back' ? today : (newStatus === 'Completed' ? today : l.receivedBackDate),
-                          });
-                          if (newStatus === 'Dispatched' || newStatus === 'Received Back' || newStatus === 'Completed') {
-                            updatePartyEdit(l.id, { overrideStatus: newStatus === 'Dispatched' ? 'In Progress' : (newStatus === 'Completed' ? 'Completed' : newStatus), completeDate: newStatus === 'Completed' ? today : '' });
-                          } else {
-                            updatePartyEdit(l.id, { overrideStatus: newStatus });
-                          }
-                        }}
+                  <td style={{ position: 'relative' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className={statusMeta[l.status]?.className || 'badge'} style={{ padding: '4px 8px' }}>{l.status}</span>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ height: 26, padding: '3px 8px', fontSize: 12 }}
+                        onClick={() => setStatusMenuOpen(statusMenuOpen === l.id ? null : l.id)}
                       >
-                        {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
-                      </select>
-                      {l.dispatchDate && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>Dispatch: {l.dispatchDate}</div>}
-                      {l.receivedBackDate && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 1 }}>Received: {l.receivedBackDate}</div>}
+                        Change
+                      </button>
                     </div>
+                    {statusMenuOpen === l.id && (
+                      <div style={{
+                        position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+                        background: '#fff', border: '1px solid var(--border)', borderRadius: 8,
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.12)', width: 180, zIndex: 50,
+                      }}>
+                        {STATUS_OPTIONS.map(status => (
+                          <button
+                            key={status}
+                            onClick={() => setLotStatus(l, status)}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              width: '100%', padding: '8px 10px', border: 'none', background: 'transparent',
+                              textAlign: 'left', cursor: 'pointer',
+                            }}
+                          >
+                            <span className={statusMeta[status]?.className || 'badge'} style={{ padding: '3px 8px' }}>{status}</span>
+                            <span>{status}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {l.dispatchDate && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>Dispatch: {l.dispatchDate}</div>}
+                    {l.receivedBackDate && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 1 }}>Received: {l.receivedBackDate}</div>}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: '#1e40af' }}>
                     ₨{Number(l.billAmount || 0).toLocaleString()}
