@@ -61,7 +61,13 @@ const navItems = [
   },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
+  const handleNavClick = () => {
+    if (window.innerWidth <= 768) {
+      setSidebarOpen(false);
+    }
+  };
+
   return (
     <aside style={{
       width: 230,
@@ -75,7 +81,32 @@ export default function Sidebar() {
       bottom: 0,
       zIndex: 200,
       boxShadow: '2px 0 12px rgba(0,0,0,0.15)',
+      transform: window.innerWidth <= 768 ? (sidebarOpen ? 'translateX(0)' : 'translateX(-100%)') : 'translateX(0)',
+      transition: 'transform 0.3s ease',
     }}>
+      {/* Mobile close button */}
+      <div style={{ 
+        display: window.innerWidth <= 768 ? 'flex' : 'none',
+        justifyContent: 'flex-end',
+        padding: '12px 16px',
+        borderBottom: '1px solid rgba(255,255,255,0.07)'
+      }}>
+        <button
+          onClick={() => setSidebarOpen(false)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#94a3b8',
+            fontSize: 20,
+            cursor: 'pointer',
+            padding: 4,
+            borderRadius: 4
+          }}
+        >
+          ×
+        </button>
+      </div>
+
       {/* Logo */}
       <div style={{ padding: '24px 20px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, fontWeight: 600, color: '#fff', lineHeight: 1.2 }}>
@@ -93,6 +124,7 @@ export default function Sidebar() {
             key={item.to}
             to={item.to}
             end={item.exact}
+            onClick={handleNavClick}
             style={({ isActive }) => ({
               display: 'flex',
               alignItems: 'center',
