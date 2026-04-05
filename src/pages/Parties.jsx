@@ -69,14 +69,14 @@ export default function Parties() {
     };
   };
 
-  const handleSave = (form) => {
-    if (editing) updateParty(editing.id, form);
-    else addParty(form);
+  const handleSave = async (form) => {
+    if (editing) await updateParty(editing.id, form);
+    else await addParty(form);
     setModal(null); setEditing(null);
   };
 
-  const handleDelete = () => {
-    deleteParty(deleteTarget.id);
+  const handleDelete = async () => {
+    await deleteParty(deleteTarget.id);
     setDeleteTarget(null);
   };
 

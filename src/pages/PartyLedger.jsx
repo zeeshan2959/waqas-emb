@@ -38,24 +38,24 @@ export default function PartyLedger() {
     setEditingId(lot.id);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const lot = ghausiaLots.find(l => l.id === editingId);
 
     if (editForm.status === 'Completed') {
       // Mark ledger entry done and also update Ghausia collection item
-      updatePartyEdit(editingId, {
+      await updatePartyEdit(editingId, {
         completeDate: editForm.completeDate || new Date().toISOString().slice(0, 10),
         partyBillAmount: editForm.billAmount,
         receipt: editForm.receipt,
         notes: editForm.notes,
         overrideStatus: 'Completed',
       });
-      updateLot(editingId, {
+      await updateLot(editingId, {
         status: 'Received Back',
         receivedBackDate: editForm.completeDate || new Date().toISOString().slice(0, 10),
       });
     } else {
-      updatePartyEdit(editingId, {
+      await updatePartyEdit(editingId, {
         completeDate: editForm.completeDate,
         partyBillAmount: editForm.billAmount,
         receipt: editForm.receipt,
@@ -63,7 +63,7 @@ export default function PartyLedger() {
         overrideStatus: 'In Progress',
       });
       if (lot.status !== 'Dispatched') {
-        updateLot(editingId, { status: 'Dispatched', dispatchDate: lot.dispatchDate || new Date().toISOString().slice(0, 10) });
+        await updateLot(editingId, { status: 'Dispatched', dispatchDate: lot.dispatchDate || new Date().toISOString().slice(0, 10) });
       }
     }
 
@@ -87,15 +87,15 @@ export default function PartyLedger() {
     withReceipt: filtered.filter(l => partyEdits[l.id]?.receipt).length,
   }), [filtered, partyEdits]);
 
-  const handleRowStatusChange = (lot, newStatus) => {
+  const handleRowStatusChange = async (lot, newStatus) => {
     if (newStatus === 'Completed') {
       openEdit(lot, 'Completed');
       return;
     }
 
-    updatePartyEdit(lot.id, { overrideStatus: 'In Progress' });
+    await updatePartyEdit(lot.id, { overrideStatus: 'In Progress' });
     if (lot.status !== 'Dispatched') {
-      updateLot(lot.id, { status: 'Dispatched', dispatchDate: new Date().toISOString().slice(0, 10) });
+      await updateLot(lot.id, { status: 'Dispatched', dispatchDate: new Date().toISOString().slice(0, 10) });
     }
   };
 

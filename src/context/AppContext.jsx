@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiService } from '../services/api';
 
 const AppContext = createContext(null);
 
@@ -45,7 +46,7 @@ const INITIAL_GHAUSIA = [
 // They can have extra editable fields: completeDate, partyBillAmount, receipt
 const INITIAL_PARTY_EDITS = {
   // keyed by ghausia lot id
-  1: { completeDate: '2025-01-20', partyBillAmount: 45000, receipt: null, notes: '' },
+  1: { id: 1, lotId: 1, completeDate: '2025-01-20', partyBillAmount: 45000, receipt: null, notes: '' },
 };
 
 const INITIAL_PAYMENTS = [
@@ -59,19 +60,101 @@ export function AppProvider({ children }) {
   const [partyEdits, setPartyEdits] = useState(INITIAL_PARTY_EDITS);
   const [payments, setPayments] = useState(INITIAL_PAYMENTS);
 
-  const addParty = (p) => setParties(arr => [...arr, { ...p, id: Date.now() }]);
-  const updateParty = (id, p) => setParties(arr => arr.map(x => x.id === id ? { ...x, ...p } : x));
-  const deleteParty = (id) => setParties(arr => arr.filter(x => x.id !== id));
+  useEffect(() => {
+    async function loadAppData() {
+      try {
+        const [remoteParties, remoteLots, remotePayments, remotePartyEdits] = await Promise.all([
+          apiService.getParties(),
+          apiService.getGhausiaLots(),
+          apiService.getPayments(),
+          apiService.getPartyEdits(),
+        ]);
 
-  const addLot = (lot) => setGhausiaLots(arr => [...arr, { ...lot, id: Date.now() }]);
-  const updateLot = (id, lot) => setGhausiaLots(arr => arr.map(x => x.id === id ? { ...x, ...lot } : x));
-  const deleteLot = (id) => setGhausiaLots(arr => arr.filter(x => x.id !== id));
+        if (Array.isArray(remoteParties) && remoteParties.length > 0) {
+          setParties(remoteParties);
+        }
 
-  const updatePartyEdit = (lotId, edits) =>
-    setPartyEdits(prev => ({ ...prev, [lotId]: { ...(prev[lotId] || {}), ...edits } }));
+        if (Array.isArray(remoteLots) && remoteLots.length > 0) {
+          setGhausiaLots(remoteLots);
+        }
 
-  const addPayment = (p) => setPayments(arr => [...arr, { ...p, id: Date.now(), amount: Number(p.amount) }]);
-  const deletePayment = (id) => setPayments(arr => arr.filter(x => x.id !== id));
+        if (Array.isArray(remotePayments) && remotePayments.length > 0) {
+          setPayments(remotePayments);
+        }
+
+        if (Array.isArray(remotePartyEdits)) {
+          setPartyEdits(remotePartyEdits.reduce((acc, item) => {
+            acc[item.lotId] = item;
+            return acc;
+          }, {}));
+        }
+      } catch (error) {
+        console.error('Unable to load persisted data from JSON Server', error);
+      }
+    }
+
+    loadAppData();
+  }, []);
+
+  const addParty = async (p) => {
+    const created = await apiService.createParty(p);
+    setParties(arr => [...arr, created]);
+    return created;
+  };
+
+  const updateParty = async (id, p) => {
+    const updated = await apiService.updateParty(id, p);
+    setParties(arr => arr.map(x => x.id === id ? updated : x));
+    return updated;
+  };
+
+  const deleteParty = async (id) => {
+    await apiService.deleteParty(id);
+    setParties(arr => arr.filter(x => x.id !== id));
+  };
+
+  const addLot = async (lot) => {
+    const created = await apiService.createGhausiaLot(lot);
+    setGhausiaLots(arr => [...arr, created]);
+    return created;
+  };
+
+  const updateLot = async (id, lot) => {
+    const updated = await apiService.updateGhausiaLot(id, lot);
+    setGhausiaLots(arr => arr.map(x => x.id === id ? updated : x));
+    return updated;
+  };
+
+  const deleteLot = async (id) => {
+    await apiService.deleteGhausiaLot(id);
+    setGhausiaLots(arr => arr.filter(x => x.id !== id));
+  };
+
+  const updatePartyEdit = async (lotId, edits) => {
+    const current = partyEdits[lotId] || {};
+    const next = { ...current, ...edits, lotId };
+
+    let saved;
+    if (current.id) {
+      saved = await apiService.updatePartyEdit(current.id, next);
+    } else {
+      saved = await apiService.createPartyEdit(next);
+    }
+
+    setPartyEdits(prev => ({ ...prev, [lotId]: saved }));
+    return saved;
+  };
+
+  const addPayment = async (p) => {
+    const payment = await apiService.createPayment({ ...p, amount: Number(p.amount) });
+    setPayments(arr => [...arr, payment]);
+    return payment;
+  };
+
+  const deletePayment = async (id) => {
+    await apiService.deletePayment(id);
+    setPayments(arr => arr.filter(x => x.id !== id));
+  };
 
   const getPartyById = (id) => parties.find(p => p.id === id);
   const getPartyName = (id) => parties.find(p => p.id === id)?.name || 'Unknown';

@@ -131,7 +131,7 @@ export default function GhausiaCollection() {
     'In Progress': { className: 'badge badge-inprogress', label: 'In Progress' },
   };
 
-  const setLotStatus = (lot, newStatus) => {
+  const setLotStatus = async (lot, newStatus) => {
     const today = new Date().toISOString().slice(0, 10);
     const lotUpdate = { status: newStatus };
     if (newStatus === 'Dispatched') {
@@ -140,10 +140,10 @@ export default function GhausiaCollection() {
     if (newStatus === 'Received Back' || newStatus === 'Completed') {
       lotUpdate.receivedBackDate = today;
     }
-    updateLot(lot.id, lotUpdate);
+    await updateLot(lot.id, lotUpdate);
 
     const ledgerStatus = newStatus === 'Dispatched' ? 'In Progress' : (newStatus === 'Completed' ? 'Completed' : newStatus);
-    updatePartyEdit(lot.id, {
+    await updatePartyEdit(lot.id, {
       overrideStatus: ledgerStatus,
       completeDate: newStatus === 'Completed' ? today : '',
     });
@@ -167,27 +167,27 @@ export default function GhausiaCollection() {
   const openEdit = (lot) => { setEditing(lot); setModal('form'); };
   const openAdd = () => { setEditing(null); setModal('form'); };
 
-  const handleSave = (form) => {
-    if (editing) updateLot(editing.id, form);
-    else addLot(form);
+  const handleSave = async (form) => {
+    if (editing) await updateLot(editing.id, form);
+    else await addLot(form);
     setModal(null); setEditing(null);
   };
 
-  const handleDelete = () => {
-    deleteLot(deleteTarget.id);
+  const handleDelete = async () => {
+    await deleteLot(deleteTarget.id);
     setDeleteTarget(null);
   };
 
-  const handlePartyChange = (lotId, partyId) => {
+  const handlePartyChange = async (lotId, partyId) => {
     const currentDate = new Date().toISOString().slice(0, 10);
-    updateLot(lotId, {
+    await updateLot(lotId, {
       partyId: partyId ? Number(partyId) : null,
       status: partyId ? 'Dispatched' : 'Pending',
       dispatchDate: partyId ? currentDate : '',
     });
     // Set party edit to show "In Progress" in Party Ledger
     if (partyId) {
-      updatePartyEdit(lotId, {
+      await updatePartyEdit(lotId, {
         overrideStatus: 'In Progress',
         allotDate: currentDate,
       });

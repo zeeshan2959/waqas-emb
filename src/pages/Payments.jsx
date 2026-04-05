@@ -17,9 +17,9 @@ export default function Payments() {
   const partyOut = payments.filter(p => p.type === 'Paid').reduce((s, p) => s + p.amount, 0);
   const balance = ownerIn - partyOut;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.amount || !form.date) return;
-    addPayment(form);
+    await addPayment(form);
     setForm({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
     setModal(false);
   };
@@ -134,7 +134,7 @@ export default function Payments() {
                     {p.type === 'Paid' ? '-' : '+'}₨{p.amount.toLocaleString()}
                   </td>
                   <td>
-                    <button className="btn-icon" onClick={() => deletePayment(p.id)} title="Delete payment">
+                    <button className="btn-icon" onClick={() => deletePayment(p.id).catch(console.error)} title="Delete payment">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
                         <polyline points="3 6 5 6 21 6"/>
                         <path d="M19 6l-1 14H6L5 6"/>
