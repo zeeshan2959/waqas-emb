@@ -81,6 +81,28 @@
   background: #1d4ed8;
 }
 
+.saveBtn {
+  width: 100%;
+  margin-top: 16px;
+  background: #059669;
+  color: white;
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.saveBtn:hover:not(:disabled) {
+  background: #047857;
+}
+
+.saveBtn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;

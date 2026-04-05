@@ -321,21 +321,6 @@
       "receivedBackDate": ""
     },
     {
-      "id": "3",
-      "lotNo": "L003",
-      "designNo": "D-103",
-      "description": "Block Print",
-      "fabric": "Cambric",
-      "colors": 7,
-      "pieces": 200,
-      "allotDate": "2025-01-18",
-      "partyId": 3,
-      "status": "Received Back",
-      "billAmount": 78000,
-      "dispatchDate": "2025-01-25",
-      "receivedBackDate": "2025-02-01"
-    },
-    {
       "lotNo": "l-waqas",
       "designNo": "asfjkhjfkas",
       "description": "asjkkas",
@@ -360,6 +345,56 @@
       "partyBillAmount": 45000,
       "receipt": null,
       "notes": ""
+    }
+  ],
+  "savedDesigns": [
+    {
+      "id": "1",
+      "designNumber": "EMB-001",
+      "rows": [
+        {
+          "baseStitches": "15000",
+          "repeat": 1
+        },
+        {
+          "baseStitches": "8000",
+          "repeat": 2
+        }
+      ],
+      "rate": "25.50",
+      "pieces": 100,
+      "grandTotal": 46000,
+      "onePieceRate": 1173,
+      "totalCost": 117300,
+      "createdAt": "2024-01-15T10:30:00Z"
+    },
+    {
+      "designNumber": "D-290",
+      "rows": [
+        {
+          "baseStitches": "1512",
+          "repeat": 0.5
+        },
+        {
+          "baseStitches": "111111",
+          "repeat": 1
+        },
+        {
+          "baseStitches": "10000000",
+          "repeat": 3
+        },
+        {
+          "baseStitches": "12000",
+          "repeat": 1.25
+        }
+      ],
+      "rate": "1.5",
+      "pieces": 1,
+      "grandTotal": 30126867,
+      "onePieceRate": 45190.3005,
+      "totalCost": 45190.3005,
+      "createdAt": "2026-04-05T12:00:52.607Z",
+      "id": "6fGkncc8hOc"
     }
   ],
   "$schema": "./node_modules/json-server/schema.json"

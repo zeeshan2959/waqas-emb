@@ -62,6 +62,13 @@ The JSON Server provides the following REST endpoints:
 - `POST /partyEdits` - Create new party edit entry
 - `PUT /partyEdits/:id` - Update party edit entry
 
+### Saved Designs
+- `GET /savedDesigns` - Get all saved designs
+- `GET /savedDesigns/:id` - Get saved design by ID
+- `POST /savedDesigns` - Create new saved design
+- `PUT /savedDesigns/:id` - Update saved design
+- `DELETE /savedDesigns/:id` - Delete saved design
+
 ### Payments
 - `GET /payments` - Get all payments
 - `GET /payments?partyId=:id` - Get payments for specific party

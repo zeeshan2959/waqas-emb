@@ -199,6 +199,35 @@ class ApiService {
     });
   }
 
+  // Saved Designs
+  async getSavedDesigns() {
+    return this.request('/savedDesigns');
+  }
+
+  async getSavedDesign(id) {
+    return this.request(`/savedDesigns/${id}`);
+  }
+
+  async createSavedDesign(data) {
+    return this.request('/savedDesigns', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSavedDesign(id, data) {
+    return this.request(`/savedDesigns/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSavedDesign(id) {
+    return this.request(`/savedDesigns/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Cash Flow
   async getCashFlow() {
     return this.request('/cashFlow');

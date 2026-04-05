@@ -1,10 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Modal, FormGroup, ActionBtn } from "../components/UI";
+import { apiService } from "../services/api";
 import "./calculator.css";
 
 export default function StitchCalculator() {
   const [rows, setRows] = useState([{ baseStitches: "", repeat: 1 }]);
   const [rate, setRate] = useState("");
   const [pieces, setPieces] = useState(1);
+
+  // Saved designs state
+  const [savedDesigns, setSavedDesigns] = useState([]);
+  const [saveModal, setSaveModal] = useState(false);
+  const [designNumber, setDesignNumber] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const repeats = [0.5, 1, 1.25, 1.5, 1.75, 2, 3, 4, 5, 6, 7];
 
@@ -23,24 +32,84 @@ export default function StitchCalculator() {
   };
 
   const calculateRowTotal = (row) => {
-    return row.baseStitches
-      ? Number(row.baseStitches) * row.repeat
-      : 0;
+    return row.baseStitches ? Number(row.baseStitches) * row.repeat : 0;
   };
 
-  const grandTotal = rows.reduce(
-    (sum, row) => sum + calculateRowTotal(row),
-    0
-  );
+  const grandTotal = rows.reduce((sum, row) => sum + calculateRowTotal(row), 0);
 
-  const onePieceRate = rate
-    ? (grandTotal * Number(rate)) / 1000
-    : 0;
+  const onePieceRate = rate ? (grandTotal * Number(rate)) / 1000 : 0;
 
   const totalCost = onePieceRate * Number(pieces || 0);
 
   const format = (num) =>
     Number(num).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+  // Load saved designs on component mount
+  useEffect(() => {
+    loadSavedDesigns();
+  }, []);
+
+  const loadSavedDesigns = async () => {
+    try {
+      const designs = await apiService.getSavedDesigns();
+      setSavedDesigns(designs);
+    } catch (error) {
+      console.error("Failed to load saved designs:", error);
+    }
+  };
+
+  const handleSaveDesign = async () => {
+    if (!designNumber.trim()) {
+      alert("Please enter a design number");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const designData = {
+        designNumber: designNumber.trim(),
+        rows: rows.map((row) => ({ ...row })),
+        rate,
+        pieces: Number(pieces),
+        grandTotal,
+        onePieceRate,
+        totalCost,
+        createdAt: new Date().toISOString(),
+      };
+
+      await apiService.createSavedDesign(designData);
+      setSaveModal(false);
+      setDesignNumber("");
+      await loadSavedDesigns();
+    } catch (error) {
+      console.error("Failed to save design:", error);
+      alert("Failed to save design. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadDesign = (design) => {
+    setRows(design.rows.map((row) => ({ ...row })));
+    setRate(design.rate);
+    setPieces(design.pieces);
+  };
+
+  const deleteDesign = async (id) => {
+    if (!confirm("Are you sure you want to delete this design?")) return;
+
+    try {
+      await apiService.deleteSavedDesign(id);
+      await loadSavedDesigns();
+    } catch (error) {
+      console.error("Failed to delete design:", error);
+      alert("Failed to delete design. Please try again.");
+    }
+  };
+
+  const filteredDesigns = savedDesigns.filter((design) =>
+    design.designNumber.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
 
   return (
     <div className="container">
@@ -70,9 +139,7 @@ export default function StitchCalculator() {
 
             <select
               value={row.repeat}
-              onChange={(e) =>
-                handleChange(index, "repeat", e.target.value)
-              }
+              onChange={(e) => handleChange(index, "repeat", e.target.value)}
               className="input"
             >
               {repeats.map((r) => (
@@ -82,9 +149,7 @@ export default function StitchCalculator() {
               ))}
             </select>
 
-            <div className="total">
-              {format(calculateRowTotal(row))}
-            </div>
+            <div className="total">{format(calculateRowTotal(row))}</div>
 
             <button
               onClick={() => removeRow(index)}
@@ -102,21 +167,26 @@ export default function StitchCalculator() {
 
         {/* Inputs */}
         <div className="grid2">
-          <input
-            type="number"
-            value={rate}
-            onChange={(e) => setRate(e.target.value)}
-            placeholder="Rate per 1000"
-            className="input"
-          />
-
-          <input
-            type="number"
-            value={pieces}
-            onChange={(e) => setPieces(e.target.value)}
-            placeholder="Pieces"
-            className="input"
-          />
+          <div>
+            <label htmlFor="" style={{fontSize:'12px'}}>Per 1000 Stitches</label>
+            <input
+              type="number"
+              value={rate}
+              onChange={(e) => setRate(e.target.value)}
+              placeholder="Rate per 1000"
+              className="input"
+            />
+          </div>
+          <div>
+            <label htmlFor="" style={{fontSize:'12px'}}># of Pieces</label>
+            <input
+              type="number"
+              value={pieces}
+              onChange={(e) => setPieces(e.target.value)}
+              placeholder="Pieces"
+              className="input"
+            />
+          </div>
         </div>
 
         {/* Results */}
@@ -135,7 +205,242 @@ export default function StitchCalculator() {
             <span>Total Cost</span>
             <span>{format(totalCost)}</span>
           </div>
+
+          <button
+            onClick={() => setSaveModal(true)}
+            className="saveBtn"
+            disabled={!grandTotal || !rate}
+          >
+            💾 Save Design
+          </button>
         </div>
+      </div>
+
+      {/* Save Design Modal */}
+      {saveModal && (
+        <Modal
+          title="Save Design"
+          onClose={() => setSaveModal(false)}
+          footer={
+            <>
+              <button
+                className="btn btn-ghost"
+                onClick={() => setSaveModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-success"
+                onClick={handleSaveDesign}
+                disabled={loading}
+              >
+                {loading ? "Saving..." : "Save Design"}
+              </button>
+            </>
+          }
+        >
+          <FormGroup label="Design Number *">
+            <input
+              type="text"
+              value={designNumber}
+              onChange={(e) => setDesignNumber(e.target.value)}
+              placeholder="e.g. EMB-001"
+              className="form-input"
+              autoFocus
+            />
+          </FormGroup>
+
+          <div
+            style={{
+              marginTop: 16,
+              padding: 12,
+              background: "#F8FAFC",
+              borderRadius: 8,
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+              Design Summary:
+            </div>
+            <div style={{ fontSize: 13, color: "#64748B" }}>
+              <div>Stitches: {format(grandTotal)}</div>
+              <div>Rate: ₨{format(rate)} per 1000</div>
+              <div>Pieces: {pieces}</div>
+              <div>Total Cost: ₨{format(totalCost)}</div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Saved Designs Section */}
+      <div className="card-calculator" style={{ marginTop: 24 }}>
+        <h2 className="title">📚 Saved Designs</h2>
+
+        {/* Search */}
+        <div style={{ marginBottom: 16 }}>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search by design number..."
+            className="input"
+            style={{ width: "100%" }}
+          />
+        </div>
+
+        {/* Designs List */}
+        {filteredDesigns.length === 0 ? (
+          <div
+            style={{ textAlign: "center", padding: "40px", color: "#64748B" }}
+          >
+            {savedDesigns.length === 0
+              ? "No saved designs yet"
+              : "No designs match your search"}
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            {filteredDesigns.map((design) => (
+              <div
+                key={design.id}
+                style={{
+                  padding: 16,
+                  border: "1px solid #E5E7EB",
+                  borderRadius: 8,
+                  background: "#FFF",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    marginBottom: 12,
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 600,
+                        color: "#1F2937",
+                      }}
+                    >
+                      {design.designNumber}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>
+                      {new Date(design.createdAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => loadDesign(design)}
+                      className="btn btn-primary"
+                      style={{ fontSize: 12, padding: "6px 12px" }}
+                    >
+                      Load
+                    </button>
+                    <ActionBtn
+                      variant="delete"
+                      onClick={() => deleteDesign(design.id)}
+                    />
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>
+                      Stitches
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>
+                      {format(design.grandTotal)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>Per 1000 Stitches</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>
+                      ₨{format(design.rate)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>
+                      One Piece
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "#7C3AED",
+                      }}
+                    >
+                      ₨{format(design.onePieceRate)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>Pieces</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>
+                      {design.pieces}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>
+                      Total Cost
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "#059669",
+                      }}
+                    >
+                      ₨{format(design.totalCost)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Show all entries */}
+                <div
+                  style={{
+                    marginTop: 12,
+                    paddingTop: 12,
+                    borderTop: "1px solid #E5E7EB",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "#374151",
+                      marginBottom: 8,
+                    }}
+                  >
+                    Entries:
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {design.rows.map((row, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          background: "#F3F4F6",
+                          padding: "4px 8px",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          color: "#4B5563",
+                        }}
+                      >
+                        {format(row.baseStitches)} × {row.repeat}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
