@@ -148,6 +148,11 @@ export default function GhausiaCollection() {
       completeDate: newStatus === 'Completed' ? today : '',
     });
 
+    // If the current status filter doesn't match the new status, reset to 'All' to keep the lot visible
+    if (statusFilter !== 'All' && newStatus !== statusFilter) {
+      setStatusFilter('All');
+    }
+
     setStatusMenuOpen(null);
   };
 
@@ -192,6 +197,23 @@ export default function GhausiaCollection() {
         allotDate: currentDate,
       });
     }
+  };
+
+  const handleAddPayment = async () => {
+    if (!payForm.amount || !payForm.date) {
+      alert('Please fill in Amount and Date');
+      return;
+    }
+    await addPayment({
+      type: payForm.type,
+      amount: Number(payForm.amount),
+      party: payForm.party,
+      date: payForm.date,
+      linkedLot: payForm.linkedLot,
+      note: payForm.note,
+    });
+    setPayModal(false);
+    setPayForm({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
   };
 
   return (

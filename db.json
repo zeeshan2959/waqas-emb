@@ -181,28 +181,13 @@
   ],
   "payments": [
     {
-      "id": "3",
-      "partyId": 4,
-      "partyName": "Ali Textiles",
-      "amount": 15000,
-      "date": "2024-01-18",
-      "method": "cheque",
-      "reference": "CHQ-2024-003",
-      "description": "Advance payment for linen order",
-      "status": "pending",
-      "type": "received"
-    },
-    {
-      "id": "4",
-      "partyId": 5,
-      "partyName": "Sultan Fabrics Ltd",
-      "amount": 25000,
-      "date": "2024-01-19",
-      "method": "bank_transfer",
-      "reference": "BT-2024-004",
-      "description": "Monthly bulk purchase payment",
-      "status": "completed",
-      "type": "paid"
+      "type": "Received",
+      "amount": 50000,
+      "party": "Owner",
+      "date": "2026-05-01",
+      "linkedLot": "",
+      "note": "received me payment",
+      "id": "rDWSL9U_JZo"
     }
   ],
   "rateCalculations": [
@@ -291,59 +276,52 @@
   ],
   "ghausiaLots": [
     {
-      "id": "1",
-      "lotNo": "L001",
-      "designNo": "D-101",
-      "description": "Floral Print",
-      "fabric": "Lawn",
-      "colors": 5,
-      "pieces": 120,
-      "allotDate": "2025-01-10",
-      "partyId": 1,
-      "status": "Completed",
-      "billAmount": 45000,
-      "dispatchDate": "2025-01-15",
-      "receivedBackDate": "2025-01-20"
-    },
-    {
-      "id": "2",
-      "lotNo": "L002",
-      "designNo": "D-102",
-      "description": "Geometric Pattern",
-      "fabric": "Velvet",
-      "colors": 3,
-      "pieces": 80,
-      "allotDate": "2025-01-15",
-      "partyId": 2,
-      "status": "Dispatched",
-      "billAmount": 32000,
-      "dispatchDate": "2025-01-22",
-      "receivedBackDate": ""
-    },
-    {
-      "lotNo": "l-waqas",
-      "designNo": "asfjkhjfkas",
-      "description": "asjkkas",
+      "lotNo": "L-10",
+      "designNo": "D-10",
+      "description": "test",
       "fabric": "Lawn",
       "customFabric": "",
-      "colors": 4,
-      "pieces": "8312",
+      "colors": 3,
+      "pieces": "123",
       "allotDate": "2026-04-05",
       "partyId": "1",
-      "status": "Pending",
+      "status": "Completed",
       "billAmount": "",
-      "dispatchDate": "",
-      "receivedBackDate": "",
-      "id": "PRihJdmITZU"
+      "dispatchDate": "2026-04-05",
+      "receivedBackDate": "2026-04-06",
+      "id": "O7iEaLds6Qg"
     }
   ],
   "partyEdits": [
     {
       "id": "1",
-      "lotId": 1,
-      "completeDate": "2025-01-20",
+      "lotId": "1",
+      "completeDate": "2026-04-05",
       "partyBillAmount": 45000,
       "receipt": null,
+      "notes": "",
+      "overrideStatus": "Completed"
+    },
+    {
+      "overrideStatus": "In Progress",
+      "completeDate": "",
+      "lotId": "2",
+      "id": "QKBCQguo-jU",
+      "allotDate": "2026-04-05"
+    },
+    {
+      "overrideStatus": "In Progress",
+      "completeDate": "",
+      "lotId": "7mocWOZ-XIM",
+      "id": "1AKakMbbfHA"
+    },
+    {
+      "overrideStatus": "Completed",
+      "completeDate": "2026-04-06",
+      "lotId": "O7iEaLds6Qg",
+      "id": "PTvK_vwz1fw",
+      "partyBillAmount": "",
+      "receipt": "",
       "notes": ""
     }
   ],
@@ -395,6 +373,34 @@
       "totalCost": 45190.3005,
       "createdAt": "2026-04-05T12:00:52.607Z",
       "id": "6fGkncc8hOc"
+    },
+    {
+      "designNumber": "D-2",
+      "rows": [
+        {
+          "baseStitches": "1512",
+          "repeat": 0.5
+        },
+        {
+          "baseStitches": "111111",
+          "repeat": 1
+        },
+        {
+          "baseStitches": "10000000",
+          "repeat": 3
+        },
+        {
+          "baseStitches": "12000",
+          "repeat": 1.25
+        }
+      ],
+      "rate": "1.5",
+      "pieces": 1,
+      "grandTotal": 30126867,
+      "onePieceRate": 45190.3005,
+      "totalCost": 45190.3005,
+      "createdAt": "2026-04-06T12:39:18.838Z",
+      "id": "T_wkXhUGQC0"
     }
   ],
   "$schema": "./node_modules/json-server/schema.json"

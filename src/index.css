@@ -270,7 +270,7 @@ tbody tr:last-child td { border-bottom: none; }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  overflow: hidden;
+  overflow: visible;
 }
 .table-scroll { overflow-x: auto; }
 

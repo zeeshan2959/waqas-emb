@@ -50,7 +50,7 @@ class ApiService {
 
   async updateCollection(id, data) {
     return this.request(`/collections/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
@@ -79,7 +79,7 @@ class ApiService {
 
   async updateParty(id, data) {
     return this.request(`/parties/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
@@ -108,7 +108,7 @@ class ApiService {
 
   async updateGhausiaLot(id, data) {
     return this.request(`/ghausiaLots/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
@@ -133,7 +133,7 @@ class ApiService {
 
   async updatePartyEdit(id, data) {
     return this.request(`/partyEdits/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
@@ -169,7 +169,7 @@ class ApiService {
 
   async updatePayment(id, data) {
     return this.request(`/payments/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
@@ -194,7 +194,7 @@ class ApiService {
 
   async updateRateCalculation(id, data) {
     return this.request(`/rateCalculations/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
@@ -217,7 +217,7 @@ class ApiService {
 
   async updateSavedDesign(id, data) {
     return this.request(`/savedDesigns/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
