@@ -363,7 +363,7 @@ export default function GhausiaCollection() {
             </div>
             {billable.map(l => (
               <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #FDE68A' }}>
-                <span>{l.lotNumber || l.lotNo} / {l.designNo} — <span style={{ color: '#92600A' }}>{getPartyName(l.partyId) || l.partyName || 'Unknown'}</span></span>
+                <span>{l.lotNumber || l.lotNo} / {l.designNo} — <span style={{ color: '#92600A' }}>{l.partyId || l.partyName}</span></span>
                 <strong style={{ color: '#92600A' }}>₨{Number(l.billAmount).toLocaleString()}</strong>
               </div>
             ))}

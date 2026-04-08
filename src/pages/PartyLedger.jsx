@@ -214,6 +214,7 @@ export default function PartyLedger() {
                 const pe = partyEdits[l.id] || {};
                 const displayStatus = getDisplayStatus(l);
                 const displayBill = getDisplayBill(l);
+                console.log(pe.completeDate);
                 return (
                   <tr key={l.id}>
                     <td style={{ fontWeight: 700, color: '#1e40af' }}>{l.lotNo || l.lotNumber}</td>
@@ -226,8 +227,8 @@ export default function PartyLedger() {
                     </td>
                     <td>{l.colors}</td>
                     <td>{l.allotDate}</td>
-                    <td>{pe.completeDate || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                    <td style={{ fontWeight: 500 }}>{getPartyNameLocal(l.partyId, l.partyName)}</td>
+                    <td>{new Date(pe.completeDate).toISOString().slice(0, 10) || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                    <td style={{ fontWeight: 500 }}>{l.partyId}</td>
                     <td>
                       <select
                         className="form-select"
