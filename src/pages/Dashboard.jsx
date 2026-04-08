@@ -2,17 +2,22 @@ import React from 'react';
 import { useApp } from '../context/AppContext';
 import { StatusBadge } from '../components/UI';
 
+const toTitleCase = (s) =>
+  String(s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
 export default function Dashboard() {
   const { ghausiaLots, partyEdits, payments, getPartyName, parties } = useApp();
 
+  // Lots use lowercase status: 'pending', 'dispatched', 'received back', 'completed'
   const byStatus = (s) => ghausiaLots.filter(l => l.status === s).length;
-  const billable = ghausiaLots.filter(l => l.status === 'Received Back');
+
+  const billable = ghausiaLots.filter(l => l.status === 'received back');
   const billableTotal = billable.reduce((s, l) => s + Number(l.billAmount || 0), 0);
-  const completedTotal = ghausiaLots.filter(l => l.status === 'Completed').reduce((s, l) => s + Number(l.billAmount || 0), 0);
+  const completedTotal = ghausiaLots.filter(l => l.status === 'completed').reduce((s, l) => s + Number(l.billAmount || 0), 0);
   const totalLotValue = ghausiaLots.reduce((s, l) => s + Number(l.billAmount || 0), 0);
 
-  const ownerIn = payments.filter(p => p.type === 'Received').reduce((s, p) => s + p.amount, 0);
-  const partyOut = payments.filter(p => p.type === 'Paid').reduce((s, p) => s + p.amount, 0);
+  const ownerIn = payments.filter(p => p.type === 'Received').reduce((s, p) => s + Number(p.amount || 0), 0);
+  const partyOut = payments.filter(p => p.type === 'Paid').reduce((s, p) => s + Number(p.amount || 0), 0);
   const balance = ownerIn - partyOut;
 
   const recentLots = [...ghausiaLots].reverse().slice(0, 6);
@@ -23,29 +28,29 @@ export default function Dashboard() {
       name: p.name,
       total: lots.length,
       value: lots.reduce((s, l) => s + Number(l.billAmount || 0), 0),
-      completed: lots.filter(l => l.status === 'Completed').length,
-      pending: lots.filter(l => l.status === 'Pending').length,
+      completed: lots.filter(l => l.status === 'completed').length,
+      pending: lots.filter(l => l.status === 'pending').length,
     };
   }).filter(p => p.total > 0);
 
   const maxVal = Math.max(...partyStats.map(p => p.value), 1);
 
   const statCards = [
-    { label: 'Total Lots', value: ghausiaLots.length, color: '#1e40af', sub: 'All assigned lots' },
-    { label: 'Pending', value: byStatus('Pending'), color: '#d97706', sub: 'Awaiting dispatch' },
-    { label: 'Dispatched', value: byStatus('Dispatched'), color: '#0284c7', sub: 'Currently with party' },
-    { label: 'Received Back', value: byStatus('Received Back'), color: '#dc2626', sub: 'Ready to bill owner' },
-    { label: 'Completed', value: byStatus('Completed'), color: '#15803d', sub: 'Fully done' },
-    { label: 'Active Parties', value: partyStats.length, color: '#7c3aed', sub: 'With assigned lots' },
+    { label: 'Total Lots',     value: ghausiaLots.length,       color: '#1e40af', sub: 'All assigned lots' },
+    { label: 'Pending',        value: byStatus('pending'),       color: '#d97706', sub: 'Awaiting dispatch' },
+    { label: 'Dispatched',     value: byStatus('dispatched'),    color: '#0284c7', sub: 'Currently with party' },
+    { label: 'Received Back',  value: byStatus('received back'), color: '#dc2626', sub: 'Ready to bill owner' },
+    { label: 'Completed',      value: byStatus('completed'),     color: '#15803d', sub: 'Fully done' },
+    { label: 'Active Parties', value: partyStats.length,         color: '#7c3aed', sub: 'With assigned lots' },
   ];
 
   const finCards = [
-    { label: 'Total Lot Value', value: totalLotValue, color: '#1e40af' },
-    { label: 'Billable to Owner', value: billableTotal, color: '#dc2626', note: `${billable.length} lots` },
-    { label: 'Completed Revenue', value: completedTotal, color: '#15803d' },
-    { label: 'Received from Owner', value: ownerIn, color: '#0284c7' },
-    { label: 'Paid to Parties', value: partyOut, color: '#7c3aed' },
-    { label: 'Owner Balance', value: balance, color: balance >= 0 ? '#15803d' : '#dc2626', note: balance >= 0 ? 'Credit' : 'Debit' },
+    { label: 'Total Lot Value',       value: totalLotValue, color: '#1e40af' },
+    { label: 'Billable to Owner',     value: billableTotal, color: '#dc2626', note: `${billable.length} lots` },
+    { label: 'Completed Revenue',     value: completedTotal, color: '#15803d' },
+    { label: 'Received from Owner',   value: ownerIn,       color: '#0284c7' },
+    { label: 'Paid to Parties',       value: partyOut,      color: '#7c3aed' },
+    { label: 'Owner Balance',         value: balance,       color: balance >= 0 ? '#15803d' : '#dc2626', note: balance >= 0 ? 'Credit' : 'Debit' },
   ];
 
   return (
@@ -87,13 +92,13 @@ export default function Dashboard() {
           <div className="card-header"><span className="card-title">Lot Status Breakdown</span></div>
           <div className="card-body">
             {[
-              { label: 'Pending', count: byStatus('Pending'), color: '#d97706' },
-              { label: 'Dispatched', count: byStatus('Dispatched'), color: '#0284c7' },
-              { label: 'Received Back', count: byStatus('Received Back'), color: '#dc2626' },
-              { label: 'Completed', count: byStatus('Completed'), color: '#15803d' },
+              { label: 'Pending',       count: byStatus('pending'),       color: '#d97706' },
+              { label: 'Dispatched',    count: byStatus('dispatched'),    color: '#0284c7' },
+              { label: 'Received Back', count: byStatus('received back'), color: '#dc2626' },
+              { label: 'Completed',     count: byStatus('completed'),     color: '#15803d' },
             ].map(s => (
               <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                <div style={{ width: 100, fontSize: 13, color: 'var(--text-secondary)', flexShrink: 0 }}>{s.label}</div>
+                <div style={{ width: 110, fontSize: 13, color: 'var(--text-secondary)', flexShrink: 0 }}>{s.label}</div>
                 <div style={{ flex: 1, background: '#F3F4F6', borderRadius: 6, height: 14, overflow: 'hidden' }}>
                   <div style={{
                     width: `${ghausiaLots.length ? (s.count / ghausiaLots.length) * 100 : 0}%`,
@@ -130,8 +135,8 @@ export default function Dashboard() {
                 <tbody>
                   {billable.map(l => (
                     <tr key={l.id}>
-                      <td><span style={{ fontWeight: 600 }}>{l.lotNo}</span> / {l.designNo}</td>
-                      <td style={{ color: 'var(--text-secondary)' }}>{getPartyName(l.partyId)}</td>
+                      <td><span style={{ fontWeight: 600 }}>{l.lotNo || l.lotNumber}</span> / {l.designNo}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{getPartyName(l.partyId) || l.partyName}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600, color: '#dc2626' }}>
                         ₨{Number(l.billAmount).toLocaleString()}
                       </td>
@@ -169,7 +174,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Recent Activity */}
+        {/* Recent Lots */}
         <div className="card">
           <div className="card-header"><span className="card-title">Recent Lots</span></div>
           <div className="card-body" style={{ padding: 0 }}>
@@ -185,10 +190,10 @@ export default function Dashboard() {
               <tbody>
                 {recentLots.map(l => (
                   <tr key={l.id}>
-                    <td style={{ fontWeight: 600 }}>{l.lotNo}</td>
+                    <td style={{ fontWeight: 600 }}>{l.lotNo || l.lotNumber}</td>
                     <td>{l.designNo}</td>
-                    <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{getPartyName(l.partyId)}</td>
-                    <td><StatusBadge status={l.status} /></td>
+                    <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{getPartyName(l.partyId) || l.partyName}</td>
+                    <td><StatusBadge status={toTitleCase(l.status)} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -229,9 +234,9 @@ export default function Dashboard() {
                     </td>
                     <td>{p.party}</td>
                     <td>{p.linkedLot || '—'}</td>
-                    <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{p.note}</td>
+                    <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{p.note || '—'}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: p.type === 'Received' ? '#15803d' : '#dc2626' }}>
-                      ₨{p.amount.toLocaleString()}
+                      ₨{Number(p.amount || 0).toLocaleString()}
                     </td>
                   </tr>
                 ))}

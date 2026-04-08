@@ -1,65 +1,103 @@
 import React, { useState, useMemo } from 'react';
+import Swal from 'sweetalert2';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, StatusBadge, ActionBtn, SearchBar, EmptyState, ConfirmDialog } from '../components/UI';
 
 const FABRICS = ['Lawn', 'Velvet', 'Cambric'];
 const COLOR_OPTIONS = Array.from({ length: 13 }, (_, i) => i);
-const STATUS_OPTIONS = ['Pending', 'Dispatched', 'Received Back', 'Completed'];
+const STATUS_OPTIONS = ['pending', 'dispatched', 'received back', 'completed'];
 
 function LotForm({ initial, onSave, onClose, parties }) {
   const blank = {
-    lotNo: '', designNo: '', description: '', fabric: 'Lawn', customFabric: '',
-    colors: 0, pieces: '', allotDate: new Date().toISOString().slice(0, 10), partyId: parties[0]?.id || '',
-    status: 'Pending', billAmount: '', dispatchDate: '', receivedBackDate: '',
+    lotNumber: '', lotNo: '', designNo: '', description: '', itemType: 'Lawn', fabric: 'Lawn', customFabric: '',
+    colors: 0, quantity: '', pieces: '', unit: 'pieces', rate: '', billAmount: '',
+    //  totalAmount: '', 
+    //  notes: '',
+    allotDate: new Date().toISOString().slice(0, 10), partyId: '', partyName: '',
+    status: 'pending', dispatchDate: '', receivedBackDate: '',
   };
   const [form, setForm] = useState(initial ? {
-    ...blank, ...initial,
-    customFabric: FABRICS.includes(initial.fabric) ? '' : initial.fabric,
-    fabric: FABRICS.includes(initial.fabric) ? initial.fabric : '__custom',
+    ...blank,
+    ...initial,
+    lotNumber: initial.lotNumber || initial.lotNo || '',
+    lotNo: initial.lotNo || initial.lotNumber || '',
+    itemType: FABRICS.includes(initial.itemType || initial.fabric) ? (initial.itemType || initial.fabric) : '__custom',
+    fabric: FABRICS.includes(initial.itemType || initial.fabric) ? (initial.itemType || initial.fabric) : '__custom',
+    customFabric: FABRICS.includes(initial.itemType || initial.fabric) ? '' : (initial.customFabric || initial.itemType || initial.fabric || ''),
+    quantity: initial.quantity ?? initial.pieces ?? '',
+    pieces: initial.pieces ?? initial.quantity ?? '',
+    partyId: initial.partyId || (parties.find(p => p.name === (initial.partyName || initial.party))?.id) || '',
+    partyName: (parties.find(p => p.id === initial.partyId)?.name) || initial.partyName || '',
   } : blank);
   const [errors, setErrors] = useState({});
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const validate = () => {
-    const e = {};
-    if (!form.lotNo.trim()) e.lotNo = 'Required';
-    if (!form.designNo.trim()) e.designNo = 'Required';
-    // if (!form.partyId) e.partyId = 'Required';
-    if (!form.allotDate) e.allotDate = 'Required';
-    if (form.status === 'Dispatched' && !form.dispatchDate) e.dispatchDate = 'Required';
-    if (form.status === 'Received Back' && !form.receivedBackDate) e.receivedBackDate = 'Required';
-    setErrors(e);
-    return Object.keys(e).length === 0;
+    const newErrors = {};
+    if (!form.lotNumber.trim()) newErrors.lotNumber = 'Lot Number is required';
+    if (!form.designNo.trim()) newErrors.designNo = 'Design Number is required';
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSave = () => {
     if (!validate()) return;
-    const finalFabric = form.fabric === '__custom' ? form.customFabric : form.fabric;
-    onSave({ ...form, fabric: finalFabric });
+    const finalType = form.itemType === '__custom' ? form.customFabric : form.itemType;
+    const lotNumber = form.lotNumber || form.lotNo;
+    const quantityValue = Number(form.quantity || form.pieces || 0);
+    const selectedParty = parties.find(p => p.id === form.partyId);
+    const partyName = selectedParty?.name || form.partyName || '';
+    const partyId = form.partyId || '';
+
+    onSave({
+      ...form,
+      fabric: finalType,
+      itemType: finalType,
+      lotNumber,
+      lotNo: lotNumber,
+      quantity: quantityValue,
+      pieces: quantityValue,
+      rate: Number(form.rate || 0),
+      billAmount: Number(form.billAmount || 0),
+      // totalAmount: Number(form.totalAmount || form.billAmount || 0),
+      unit: form.unit || 'pieces',
+      partyId,
+      partyName,
+    });
   };
 
   return (
     <>
       <div className="grid-2">
         <FormGroup label="Lot Number *">
-          <input className="form-input" value={form.lotNo} onChange={e => set('lotNo', e.target.value)} placeholder="e.g. L001" />
-          {errors.lotNo && <span style={{ color: '#dc2626', fontSize: 11 }}>{errors.lotNo}</span>}
+          <input
+            className={`form-input${errors.lotNumber ? ' input-error' : ''}`}
+            value={form.lotNumber}
+            onChange={e => { const v = e.target.value; set('lotNumber', v); set('lotNo', v); }}
+            placeholder="e.g. L-10"
+          />
+          {errors.lotNumber && <span style={{ color: '#dc2626', fontSize: 11, marginTop: 3, display: 'block' }}>{errors.lotNumber}</span>}
         </FormGroup>
         <FormGroup label="Design Number *">
-          <input className="form-input" value={form.designNo} onChange={e => set('designNo', e.target.value)} placeholder="e.g. D-101" />
-          {errors.designNo && <span style={{ color: '#dc2626', fontSize: 11 }}>{errors.designNo}</span>}
+          <input
+            className={`form-input${errors.designNo ? ' input-error' : ''}`}
+            value={form.designNo}
+            onChange={e => set('designNo', e.target.value)}
+            placeholder="e.g. D-101"
+          />
+          {errors.designNo && <span style={{ color: '#dc2626', fontSize: 11, marginTop: 3, display: 'block' }}>{errors.designNo}</span>}
         </FormGroup>
         <FormGroup label="Description">
           <input className="form-input" value={form.description} onChange={e => set('description', e.target.value)} placeholder="e.g. Floral Print" />
         </FormGroup>
-        <FormGroup label="Fabric">
-          <select className="form-select" value={form.fabric} onChange={e => set('fabric', e.target.value)}>
+        <FormGroup label="Item Type">
+          <select className="form-select" value={form.itemType} onChange={e => set('itemType', e.target.value)}>
             {FABRICS.map(f => <option key={f}>{f}</option>)}
-            <option value="__custom">+ Custom Fabric</option>
+            <option value="__custom">+ Custom Item Type</option>
           </select>
-          {form.fabric === '__custom' && (
-            <input className="form-input" style={{ marginTop: 6 }} value={form.customFabric} onChange={e => set('customFabric', e.target.value)} placeholder="Enter fabric name" />
+          {form.itemType === '__custom' && (
+            <input className="form-input" style={{ marginTop: 6 }} value={form.customFabric} onChange={e => set('customFabric', e.target.value)} placeholder="Enter item type" />
           )}
         </FormGroup>
         <FormGroup label="Colors (0–12)">
@@ -67,38 +105,41 @@ function LotForm({ initial, onSave, onClose, parties }) {
             {COLOR_OPTIONS.map(n => <option key={n} value={n}>{n} color{n !== 1 ? 's' : ''}</option>)}
           </select>
         </FormGroup>
-        <FormGroup label="Pieces">
-          <input className="form-input" type="number" min="1" value={form.pieces} onChange={e => set('pieces', e.target.value)} placeholder="120" />
-        </FormGroup>
-        <FormGroup label="Allot Date *">
+        {/* <FormGroup label="Total Amount (₨)">
+          <input className="form-input" type="number" min="0" value={form.totalAmount} onChange={e => set('totalAmount', e.target.value)} placeholder="0" />
+        </FormGroup> */}
+        <FormGroup label="Allot Date">
           <input className="form-input" type="date" value={form.allotDate} onChange={e => set('allotDate', e.target.value)} />
-          {errors.allotDate && <span style={{ color: '#dc2626', fontSize: 11 }}>{errors.allotDate}</span>}
         </FormGroup>
         <FormGroup label="Party">
-          <select className="form-select" value={form.partyId} onChange={e => set('partyId', Number(e.target.value))}>
+          <select className="form-select" value={form.partyId} onChange={e => {
+            const selectedParty = parties.find(p => p.id === e.target.value);
+            set('partyId', e.target.value);
+            set('partyName', selectedParty ? selectedParty.name : '');
+          }}>
             <option value="">— Select Party —</option>
             {parties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          {/* {errors.partyId && <span style={{ color: '#dc2626', fontSize: 11 }}>{errors.partyId}</span>} */}
         </FormGroup>
         <FormGroup label="Status">
           <select className="form-select" value={form.status} onChange={e => set('status', e.target.value)}>
-            {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
+            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>)}
           </select>
         </FormGroup>
         <FormGroup label="Bill Amount (₨)">
           <input className="form-input" type="number" min="0" value={form.billAmount} onChange={e => set('billAmount', e.target.value)} placeholder="45000" />
         </FormGroup>
-        {(form.status === 'Dispatched' || form.status === 'Received Back' || form.status === 'Completed') && (
-          <FormGroup label="Dispatch Date *">
+        {/* <FormGroup label="Notes">
+          <input className="form-input" value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" />
+        </FormGroup> */}
+        {(form.status === 'dispatched' || form.status === 'received back' || form.status === 'completed') && (
+          <FormGroup label="Dispatch Date">
             <input className="form-input" type="date" value={form.dispatchDate} onChange={e => set('dispatchDate', e.target.value)} />
-            {errors.dispatchDate && <span style={{ color: '#dc2626', fontSize: 11 }}>{errors.dispatchDate}</span>}
           </FormGroup>
         )}
-        {(form.status === 'Received Back' || form.status === 'Completed') && (
-          <FormGroup label="Received Back Date *">
+        {(form.status === 'received back' || form.status === 'completed') && (
+          <FormGroup label="Received Back Date">
             <input className="form-input" type="date" value={form.receivedBackDate} onChange={e => set('receivedBackDate', e.target.value)} />
-            {errors.receivedBackDate && <span style={{ color: '#dc2626', fontSize: 11 }}>{errors.receivedBackDate}</span>}
           </FormGroup>
         )}
       </div>
@@ -119,52 +160,43 @@ export default function GhausiaCollection() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [payModal, setPayModal] = useState(false);
   const [payForm, setPayForm] = useState({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
-  const [statusMenuOpen, setStatusMenuOpen] = useState(null);
-
-  const STATUS_OPTIONS = ['Pending', 'Dispatched', 'Received Back', 'Completed'];
+  const [payErrors, setPayErrors] = useState({});
 
   const statusMeta = {
-    'Pending': { className: 'badge badge-pending', label: 'Pending' },
-    'Dispatched': { className: 'badge badge-dispatched', label: 'Dispatched' },
-    'Received Back': { className: 'badge badge-received', label: 'Received Back' },
-    'Completed': { className: 'badge badge-completed', label: 'Completed' },
-    'In Progress': { className: 'badge badge-inprogress', label: 'In Progress' },
+    'pending':       { className: 'badge badge-pending',    label: 'Pending' },
+    'dispatched':    { className: 'badge badge-dispatched', label: 'Dispatched' },
+    'received back': { className: 'badge badge-received',   label: 'Received Back' },
+    'completed':     { className: 'badge badge-completed',  label: 'Completed' },
+    'in progress':   { className: 'badge badge-inprogress', label: 'In Progress' },
   };
 
   const setLotStatus = async (lot, newStatus) => {
     const today = new Date().toISOString().slice(0, 10);
     const lotUpdate = { status: newStatus };
-    if (newStatus === 'Dispatched') {
-      lotUpdate.dispatchDate = today;
-    }
-    if (newStatus === 'Received Back' || newStatus === 'Completed') {
-      lotUpdate.receivedBackDate = today;
-    }
+    if (newStatus === 'dispatched') lotUpdate.dispatchDate = today;
+    if (newStatus === 'received back' || newStatus === 'completed') lotUpdate.receivedBackDate = today;
     await updateLot(lot.id, lotUpdate);
 
-    const ledgerStatus = newStatus === 'Dispatched' ? 'In Progress' : (newStatus === 'Completed' ? 'Completed' : newStatus);
+    const ledgerStatus = newStatus === 'dispatched' ? 'In Progress' : (newStatus === 'completed' ? 'Completed' : newStatus);
     await updatePartyEdit(lot.id, {
       overrideStatus: ledgerStatus,
-      completeDate: newStatus === 'Completed' ? today : '',
+      completeDate: newStatus === 'completed' ? today : '',
     });
 
-    // If the current status filter doesn't match the new status, reset to 'All' to keep the lot visible
     if (statusFilter !== 'All' && newStatus !== statusFilter) {
       setStatusFilter('All');
     }
-
-    setStatusMenuOpen(null);
   };
-
 
   const filtered = useMemo(() => ghausiaLots.filter(l => {
     const q = search.toLowerCase();
-    const matchQ = !q || l.lotNo.toLowerCase().includes(q) || l.designNo.toLowerCase().includes(q) || l.description.toLowerCase().includes(q);
+    const lotLabel = (l.lotNumber || l.lotNo || '').toLowerCase();
+    const matchQ = !q || lotLabel.includes(q) || l.designNo.toLowerCase().includes(q) || l.description.toLowerCase().includes(q);
     const matchS = statusFilter === 'All' || l.status === statusFilter;
     return matchQ && matchS;
   }), [ghausiaLots, search, statusFilter]);
 
-  const billable = ghausiaLots.filter(l => l.status === 'Received Back');
+  const billable = ghausiaLots.filter(l => l.status === 'received back');
   const billableTotal = billable.reduce((s, l) => s + Number(l.billAmount || 0), 0);
   const ownerIn = payments.filter(p => p.type === 'Received').reduce((s, p) => s + p.amount, 0);
   const partyOut = payments.filter(p => p.type === 'Paid').reduce((s, p) => s + p.amount, 0);
@@ -185,12 +217,13 @@ export default function GhausiaCollection() {
 
   const handlePartyChange = async (lotId, partyId) => {
     const currentDate = new Date().toISOString().slice(0, 10);
+    const selectedParty = parties.find(p => p.id === partyId);
     await updateLot(lotId, {
-      partyId: partyId ? Number(partyId) : null,
-      status: partyId ? 'Dispatched' : 'Pending',
+      partyId: partyId || '',
+      partyName: selectedParty ? selectedParty.name : '',
+      status: partyId ? 'dispatched' : 'pending',
       dispatchDate: partyId ? currentDate : '',
     });
-    // Set party edit to show "In Progress" in Party Ledger
     if (partyId) {
       await updatePartyEdit(lotId, {
         overrideStatus: 'In Progress',
@@ -199,21 +232,47 @@ export default function GhausiaCollection() {
     }
   };
 
+  const validatePayForm = () => {
+    const errs = {};
+    if (!payForm.amount) errs.amount = 'Amount is required';
+    if (!payForm.date) errs.date = 'Date is required';
+    if (payForm.type === 'Paid' && !payForm.party) errs.party = 'Please select a party';
+    setPayErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const handleAddPayment = async () => {
-    if (!payForm.amount || !payForm.date) {
-      alert('Please fill in Amount and Date');
-      return;
+    if (!validatePayForm()) return;
+    try {
+      await addPayment({
+        type: payForm.type,
+        amount: Number(payForm.amount),
+        party: payForm.party,
+        date: payForm.date,
+        linkedLot: payForm.linkedLot,
+        note: payForm.note,
+      });
+      setPayModal(false);
+      setPayErrors({});
+      setPayForm({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to save payment. Please try again.' });
     }
-    await addPayment({
-      type: payForm.type,
-      amount: Number(payForm.amount),
-      party: payForm.party,
-      date: payForm.date,
-      linkedLot: payForm.linkedLot,
-      note: payForm.note,
+  };
+
+  const handleDeletePayment = async (id) => {
+    const result = await Swal.fire({
+      title: 'Delete Payment?',
+      text: 'This action cannot be undone.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, delete it',
     });
-    setPayModal(false);
-    setPayForm({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
+    if (result.isConfirmed) {
+      await deletePayment(id);
+    }
   };
 
   return (
@@ -283,7 +342,7 @@ export default function GhausiaCollection() {
                         ₨{p.amount.toLocaleString()}
                       </td>
                       <td>
-                        <button className="btn-icon" onClick={() => deletePayment(p.id)} title="Delete">
+                        <button className="btn-icon" onClick={() => handleDeletePayment(p.id)} title="Delete">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
                             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
                             <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
@@ -304,7 +363,7 @@ export default function GhausiaCollection() {
             </div>
             {billable.map(l => (
               <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #FDE68A' }}>
-                <span>{l.lotNo} / {l.designNo} — <span style={{ color: '#92600A' }}>{getPartyName(l.partyId)}</span></span>
+                <span>{l.lotNumber || l.lotNo} / {l.designNo} — <span style={{ color: '#92600A' }}>{getPartyName(l.partyId) || l.partyName || 'Unknown'}</span></span>
                 <strong style={{ color: '#92600A' }}>₨{Number(l.billAmount).toLocaleString()}</strong>
               </div>
             ))}
@@ -317,7 +376,7 @@ export default function GhausiaCollection() {
         <SearchBar value={search} onChange={setSearch} placeholder="Search lot no., design, description..." />
         <select className="form-select" style={{ width: 160 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           <option value="All">All Statuses</option>
-          {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
+          {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>)}
         </select>
       </div>
 
@@ -327,8 +386,10 @@ export default function GhausiaCollection() {
           <table>
             <thead>
               <tr>
-                <th>Lot No</th><th>Design No</th><th>Description</th><th>Fabric</th>
-                <th>Colors</th><th>Pieces</th><th>Allot Date</th><th>Party Name</th>
+                <th>Lot No</th><th>Design No</th><th>Description</th><th>Item Type</th>
+                <th>Colors</th>
+                {/* <th>Quantity</th> */}
+                <th>Allot Date</th><th>Party Name</th>
                 <th>Status</th><th style={{ textAlign: 'right' }}>Bill Amount</th><th>Actions</th>
               </tr>
             </thead>
@@ -337,12 +398,12 @@ export default function GhausiaCollection() {
                 <tr><td colSpan={11}><EmptyState message="No lots found" /></td></tr>
               ) : filtered.map(l => (
                 <tr key={l.id}>
-                  <td style={{ fontWeight: 700, color: '#1e40af' }}>{l.lotNo}</td>
+                  <td style={{ fontWeight: 700, color: '#1e40af' }}>{l.lotNumber}</td>
                   <td style={{ fontWeight: 600 }}>{l.designNo}</td>
                   <td>{l.description}</td>
-                  <td><span style={{ background: '#F0F9FF', color: '#0369a1', border: '1px solid #BAE6FD', borderRadius: 6, padding: '2px 8px', fontSize: 12 }}>{l.fabric}</span></td>
+                  <td><span style={{ background: '#F0F9FF', color: '#0369a1', border: '1px solid #BAE6FD', borderRadius: 6, padding: '2px 8px', fontSize: 12 }}>{l.itemType || l.fabric}</span></td>
                   <td>{l.colors}</td>
-                  <td>{l.pieces}</td>
+                  {/* <td>{l.quantity}</td> */}
                   <td>{l.allotDate}</td>
                   <td>
                     <select
@@ -357,39 +418,20 @@ export default function GhausiaCollection() {
                       ))}
                     </select>
                   </td>
-                  <td style={{ position: 'relative' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span className={statusMeta[l.status]?.className || 'badge'} style={{ padding: '4px 8px' }}>{l.status}</span>
-                      <button
-                        className="btn btn-ghost"
-                        style={{ height: 26, padding: '3px 8px', fontSize: 12 }}
-                        onClick={() => setStatusMenuOpen(statusMenuOpen === l.id ? null : l.id)}
-                      >
-                        Change
-                      </button>
+                  <td>
+                    <select
+                      className="form-select"
+                      style={{ width: 150, fontSize: 12, padding: '5px 8px' }}
+                      value={l.status}
+                      onChange={(e) => setLotStatus(l, e.target.value)}
+                    >
+                      {STATUS_OPTIONS.map(s => (
+                        <option key={s} value={s}>{s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>
+                      ))}
+                    </select>
+                    <div style={{ marginTop: 4 }}>
+                      <StatusBadge status={statusMeta[l.status]?.label || l.status} />
                     </div>
-                    {statusMenuOpen === l.id && (
-                      <div style={{
-                        position: 'absolute', top: 'calc(100% + 6px)', left: 0,
-                        background: '#fff', border: '1px solid var(--border)', borderRadius: 8,
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.12)', width: 180, zIndex: 50,
-                      }}>
-                        {STATUS_OPTIONS.map(status => (
-                          <button
-                            key={status}
-                            onClick={() => setLotStatus(l, status)}
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: 8,
-                              width: '100%', padding: '8px 10px', border: 'none', background: 'transparent',
-                              textAlign: 'left', cursor: 'pointer',
-                            }}
-                          >
-                            <span className={statusMeta[status]?.className || 'badge'} style={{ padding: '3px 8px' }}>{status}</span>
-                            <span>{status}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
                     {l.dispatchDate && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>Dispatch: {l.dispatchDate}</div>}
                     {l.receivedBackDate && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 1 }}>Received: {l.receivedBackDate}</div>}
                   </td>
@@ -418,34 +460,71 @@ export default function GhausiaCollection() {
 
       {/* Payment Modal */}
       {payModal && (
-        <Modal title="Record Payment" onClose={() => setPayModal(false)}
+        <Modal title="Record Payment" onClose={() => { setPayModal(false); setPayErrors({}); }}
           footer={
             <>
-              <button className="btn btn-ghost" onClick={() => setPayModal(false)}>Cancel</button>
+              <button className="btn btn-ghost" onClick={() => { setPayModal(false); setPayErrors({}); }}>Cancel</button>
               <button className="btn btn-success" onClick={handleAddPayment}>Save Payment</button>
             </>
           }
         >
           <div className="grid-2">
             <FormGroup label="Type">
-              <select className="form-select" value={payForm.type} onChange={e => setPayForm(f => ({ ...f, type: e.target.value }))}>
+              <select className="form-select" value={payForm.type} onChange={e => {
+                const newType = e.target.value;
+                setPayForm(f => ({ ...f, type: newType, party: newType === 'Received' ? 'Owner' : '' }));
+                setPayErrors(prev => ({ ...prev, party: undefined }));
+              }}>
                 <option>Received</option>
                 <option>Paid</option>
               </select>
             </FormGroup>
-            <FormGroup label="Amount (₨)">
-              <input className="form-input" type="number" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} placeholder="50000" />
+            <FormGroup label="Amount (₨) *">
+              <input
+                className={`form-input${payErrors.amount ? ' input-error' : ''}`}
+                type="number"
+                value={payForm.amount}
+                onChange={e => { setPayForm(f => ({ ...f, amount: e.target.value })); setPayErrors(p => ({ ...p, amount: undefined })); }}
+                placeholder="50000"
+              />
+              {payErrors.amount && <span style={{ color: '#dc2626', fontSize: 11, marginTop: 3, display: 'block' }}>{payErrors.amount}</span>}
             </FormGroup>
-            <FormGroup label="Party / From">
-              <input className="form-input" value={payForm.party} onChange={e => setPayForm(f => ({ ...f, party: e.target.value }))} placeholder="Owner or party name" />
+            <FormGroup label={payForm.type === 'Received' ? 'Received From' : 'Paid To *'}>
+              {payForm.type === 'Received' ? (
+                <input
+                  className="form-input"
+                  value={payForm.party}
+                  onChange={e => setPayForm(f => ({ ...f, party: e.target.value }))}
+                  placeholder="Owner name"
+                />
+              ) : (
+                <>
+                  <select
+                    className={`form-select${payErrors.party ? ' input-error' : ''}`}
+                    value={payForm.party}
+                    onChange={e => { setPayForm(f => ({ ...f, party: e.target.value })); setPayErrors(p => ({ ...p, party: undefined })); }}
+                  >
+                    <option value="">— Select Party —</option>
+                    {parties.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                    <option value="Other">Other</option>
+                  </select>
+                  {payErrors.party && <span style={{ color: '#dc2626', fontSize: 11, marginTop: 3, display: 'block' }}>{payErrors.party}</span>}
+                </>
+              )}
             </FormGroup>
-            <FormGroup label="Date">
-              <input className="form-input" type="date" value={payForm.date} onChange={e => setPayForm(f => ({ ...f, date: e.target.value }))} />
+            <FormGroup label="Date *">
+              <input
+                className={`form-input${payErrors.date ? ' input-error' : ''}`}
+                type="date"
+                value={payForm.date}
+                onChange={e => { setPayForm(f => ({ ...f, date: e.target.value })); setPayErrors(p => ({ ...p, date: undefined })); }}
+              />
+              {payErrors.date && <span style={{ color: '#dc2626', fontSize: 11, marginTop: 3, display: 'block' }}>{payErrors.date}</span>}
             </FormGroup>
             <FormGroup label="Linked Lot (optional)">
               <select className="form-select" value={payForm.linkedLot} onChange={e => setPayForm(f => ({ ...f, linkedLot: e.target.value }))}>
                 <option value="">None</option>
-                {ghausiaLots.map(l => <option key={l.id} value={l.lotNo}>{l.lotNo} / {l.designNo}</option>)}
+                {ghausiaLots.map(l => <option key={l.id} value={l.lotNumber}>{l.lotNumber || l.lotNo} / {l.designNo}</option>)}
               </select>
             </FormGroup>
             <FormGroup label="Note">
@@ -458,7 +537,7 @@ export default function GhausiaCollection() {
       {/* Confirm Delete */}
       {deleteTarget && (
         <ConfirmDialog
-          message={`Delete lot ${deleteTarget.lotNo} / ${deleteTarget.designNo}? This action cannot be undone.`}
+          message={`Delete lot ${deleteTarget.lotNumber || deleteTarget.lotNo} / ${deleteTarget.designNo}? This action cannot be undone.`}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
         />

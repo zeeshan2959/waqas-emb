@@ -3,56 +3,66 @@ import { apiService } from '../services/api';
 
 const AppContext = createContext(null);
 
-const INITIAL_PARTIES = [
-  { id: 1, name: 'Al-Hamra Textiles', phone: '0300-1234567', address: 'Shop 12, Cloth Market, Lahore' },
-  { id: 2, name: 'Zara Fabrics', phone: '0321-9876543', address: 'Block A, Faisalabad Textile Market' },
-  { id: 3, name: 'Classic Threads', phone: '0333-5554321', address: 'Main Bazar, Multan' },
-  { id: 4, name: 'Royal Designs', phone: '0311-7778899', address: 'Hall Road, Lahore' },
-  { id: 5, name: 'Star Cloth House', phone: '0345-1122334', address: 'Ring Road, Gujranwala' },
-];
+const normalizeDateString = (value) => {
+  if (!value) return '';
+  const date = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 10);
+};
 
-const INITIAL_GHAUSIA = [
-  {
-    id: 1, lotNo: 'L001', designNo: 'D-101', description: 'Floral Print',
-    fabric: 'Lawn', colors: 5, pieces: 120,
-    allotDate: '2025-01-10', partyId: 1,
-    status: 'Completed', billAmount: 45000,
-    dispatchDate: '2025-01-15', receivedBackDate: '2025-01-20',
-  },
-  {
-    id: 2, lotNo: 'L002', designNo: 'D-102', description: 'Geometric Pattern',
-    fabric: 'Velvet', colors: 3, pieces: 80,
-    allotDate: '2025-01-15', partyId: 2,
-    status: 'Dispatched', billAmount: 32000,
-    dispatchDate: '2025-01-22', receivedBackDate: '',
-  },
-  {
-    id: 3, lotNo: 'L003', designNo: 'D-103', description: 'Block Print',
-    fabric: 'Cambric', colors: 7, pieces: 200,
-    allotDate: '2025-01-18', partyId: 3,
-    status: 'Received Back', billAmount: 78000,
-    dispatchDate: '2025-01-25', receivedBackDate: '2025-02-01',
-  },
-  {
-    id: 4, lotNo: 'L004', designNo: 'D-104', description: 'Embroidery Work',
-    fabric: 'Lawn', colors: 2, pieces: 60,
-    allotDate: '2025-01-20', partyId: 4,
-    status: 'Pending', billAmount: 24000,
-    dispatchDate: '', receivedBackDate: '',
-  },
-];
+const normalizeLotData = (lot) => {
+  const id = lot.id || lot._id || '';
+  const lotNumber = lot.lotNumber || lot.lotNo || '';
+  const itemType = lot.itemType || lot.fabric || '';
+  const fabric = lot.fabric || lot.itemType || '';
+  const quantity = Number(lot.quantity ?? lot.pieces ?? 0);
+  const pieces = Number(lot.pieces ?? lot.quantity ?? 0);
+  const partyId = lot.partyId != null && lot.partyId !== '' ? String(lot.partyId) : '';
+  const status = typeof lot.status === 'string'
+    ? lot.status
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+      .toLowerCase()
+    : 'pending';
+
+  return {
+    ...lot,
+    id,
+    lotNumber,
+    lotNo: lotNumber,
+    designNo: lot.designNo || '',
+    description: lot.description || lot.notes || '',
+    fabric,
+    itemType,
+    customFabric: lot.customFabric || '',
+    colors: Number(lot.colors ?? 0),
+    quantity,
+    pieces,
+    unit: lot.unit || 'pieces',
+    rate: Number(lot.rate ?? 0),
+    billAmount: Number(lot.billAmount ?? 0),
+    totalAmount: Number(lot.totalAmount ?? lot.billAmount ?? 0),
+    partyId,
+    partyName: lot.partyName || '',
+    allotDate: normalizeDateString(lot.allotDate || lot.receivedDate || lot.createdAt || lot.updatedAt),
+    dispatchDate: normalizeDateString(lot.dispatchDate),
+    receivedBackDate: normalizeDateString(lot.receivedBackDate),
+    receivedDate: normalizeDateString(lot.receivedDate),
+    status: status || 'Pending',
+    notes: lot.notes || '',
+  };
+};
+
+const INITIAL_PARTIES = [];
+
+const INITIAL_GHAUSIA = [];
 
 // Party ledger entries are derived from ghausia lots (when assigned to a party)
 // They can have extra editable fields: completeDate, partyBillAmount, receipt
-const INITIAL_PARTY_EDITS = {
-  // keyed by ghausia lot id
-  1: { id: 1, lotId: 1, completeDate: '2025-01-20', partyBillAmount: 45000, receipt: null, notes: '' },
-};
+const INITIAL_PARTY_EDITS = {};
 
-const INITIAL_PAYMENTS = [
-  { id: 1, type: 'Received', amount: 100000, party: 'Owner', date: '2025-01-05', note: 'Initial advance', linkedLot: '' },
-  { id: 2, type: 'Paid', amount: 45000, party: 'Al-Hamra Textiles', date: '2025-01-22', note: 'Bill for L001/D-101', linkedLot: 'L001' },
-];
+const INITIAL_PAYMENTS = [];
 
 export function AppProvider({ children }) {
   const [parties, setParties] = useState(INITIAL_PARTIES);
@@ -75,7 +85,7 @@ export function AppProvider({ children }) {
         }
 
         if (Array.isArray(remoteLots) && remoteLots.length > 0) {
-          setGhausiaLots(remoteLots);
+          setGhausiaLots(remoteLots.map(normalizeLotData));
         }
 
         if (Array.isArray(remotePayments) && remotePayments.length > 0) {
@@ -114,13 +124,13 @@ export function AppProvider({ children }) {
   };
 
   const addLot = async (lot) => {
-    const created = await apiService.createGhausiaLot(lot);
+    const created = normalizeLotData(await apiService.createGhausiaLot(lot));
     setGhausiaLots(arr => [...arr, created]);
     return created;
   };
 
   const updateLot = async (id, lot) => {
-    const updated = await apiService.updateGhausiaLot(id, lot);
+    const updated = normalizeLotData(await apiService.updateGhausiaLot(id, lot));
     setGhausiaLots(arr => arr.map(x => x.id === id ? updated : x));
     return updated;
   };
@@ -130,19 +140,19 @@ export function AppProvider({ children }) {
     setGhausiaLots(arr => arr.filter(x => x.id !== id));
   };
 
-  const updatePartyEdit = async (lotId, edits) => {
-    const current = partyEdits[lotId] || {};
-    const next = { ...current, ...edits, lotId };
-
-    let saved;
-    if (current.id) {
-      saved = await apiService.updatePartyEdit(current.id, next);
-    } else {
-      saved = await apiService.createPartyEdit(next);
+  const updatePartyEdit = async (lotId, data) => {
+    try {
+      const result = await apiService.upsertPartyEditByLotId(lotId, data);
+      setPartyEdits(prev => ({ ...prev, [lotId]: result }));
+      return result;
+    } catch (error) {
+      console.error('Error updating party edit:', error);
+      const fallback = { ...data, lotId };
+      setPartyEdits(prev => ({
+        ...prev,
+        [lotId]: { ...(prev[lotId] || {}), ...fallback },
+      }));
     }
-
-    setPartyEdits(prev => ({ ...prev, [lotId]: saved }));
-    return saved;
   };
 
   const addPayment = async (p) => {

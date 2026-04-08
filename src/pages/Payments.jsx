@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import Swal from 'sweetalert2';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, EmptyState } from '../components/UI';
 
@@ -7,6 +8,7 @@ export default function Payments() {
   const [modal, setModal] = useState(false);
   const [typeFilter, setTypeFilter] = useState('All');
   const [form, setForm] = useState({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
+  const [errors, setErrors] = useState({});
 
   const filtered = useMemo(() =>
     payments.filter(p => typeFilter === 'All' || p.type === typeFilter),
@@ -17,11 +19,46 @@ export default function Payments() {
   const partyOut = payments.filter(p => p.type === 'Paid').reduce((s, p) => s + p.amount, 0);
   const balance = ownerIn - partyOut;
 
+  const validateForm = () => {
+    const newErrors = {};
+    if (!form.amount) newErrors.amount = 'Amount is required';
+    if (!form.date) newErrors.date = 'Date is required';
+    if (form.type === 'Paid' && !form.party) newErrors.party = 'Please select a party';
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSave = async () => {
-    if (!form.amount || !form.date) return;
-    await addPayment(form);
-    setForm({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
+    if (!validateForm()) return;
+    try {
+      await addPayment(form);
+      setForm({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
+      setErrors({});
+      setModal(false);
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to save payment. Please try again.' });
+    }
+  };
+
+  const handleDelete = async (id) => {
+    const result = await Swal.fire({
+      title: 'Delete Payment?',
+      text: 'This action cannot be undone.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, delete it',
+    });
+    if (result.isConfirmed) {
+      await deletePayment(id).catch(console.error);
+    }
+  };
+
+  const handleClose = () => {
     setModal(false);
+    setErrors({});
+    setForm({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
   };
 
   return (
@@ -134,7 +171,7 @@ export default function Payments() {
                     {p.type === 'Paid' ? '-' : '+'}₨{p.amount.toLocaleString()}
                   </td>
                   <td>
-                    <button className="btn-icon" onClick={() => deletePayment(p.id).catch(console.error)} title="Delete payment">
+                    <button className="btn-icon" onClick={() => handleDelete(p.id)} title="Delete payment">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
                         <polyline points="3 6 5 6 21 6"/>
                         <path d="M19 6l-1 14H6L5 6"/>
@@ -154,42 +191,66 @@ export default function Payments() {
       {modal && (
         <Modal
           title="Record New Payment"
-          onClose={() => setModal(false)}
+          onClose={handleClose}
           footer={
             <>
-              <button className="btn btn-ghost" onClick={() => setModal(false)}>Cancel</button>
+              <button className="btn btn-ghost" onClick={handleClose}>Cancel</button>
               <button className="btn btn-success" onClick={handleSave}>Save Payment</button>
             </>
           }
         >
           <div className="grid-2">
             <FormGroup label="Type">
-              <select className="form-select" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+              <select className="form-select" value={form.type} onChange={e => {
+                const newType = e.target.value;
+                setForm(f => ({ ...f, type: newType, party: newType === 'Received' ? 'Owner' : '' }));
+                setErrors(prev => ({ ...prev, party: undefined }));
+              }}>
                 <option>Received</option>
                 <option>Paid</option>
               </select>
             </FormGroup>
             <FormGroup label="Amount (₨) *">
-              <input className="form-input" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="50000" />
+              <input
+                className={`form-input${errors.amount ? ' input-error' : ''}`}
+                type="number"
+                value={form.amount}
+                onChange={e => { setForm(f => ({ ...f, amount: e.target.value })); setErrors(p => ({ ...p, amount: undefined })); }}
+                placeholder="50000"
+              />
+              {errors.amount && <span style={{ color: '#dc2626', fontSize: 11, marginTop: 3, display: 'block' }}>{errors.amount}</span>}
             </FormGroup>
-            <FormGroup label={form.type === 'Received' ? 'Received From' : 'Paid To'}>
+            <FormGroup label={form.type === 'Received' ? 'Received From' : 'Paid To *'}>
               {form.type === 'Received' ? (
                 <input className="form-input" value={form.party} onChange={e => setForm(f => ({ ...f, party: e.target.value }))} placeholder="Owner name" />
               ) : (
-                <select className="form-select" value={form.party} onChange={e => setForm(f => ({ ...f, party: e.target.value }))}>
-                  <option value="">— Select Party —</option>
-                  {parties.map(p => <option key={p.id}>{p.name}</option>)}
-                  <option value="Other">Other</option>
-                </select>
+                <>
+                  <select
+                    className={`form-select${errors.party ? ' input-error' : ''}`}
+                    value={form.party}
+                    onChange={e => { setForm(f => ({ ...f, party: e.target.value })); setErrors(p => ({ ...p, party: undefined })); }}
+                  >
+                    <option value="">— Select Party —</option>
+                    {parties.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                    <option value="Other">Other</option>
+                  </select>
+                  {errors.party && <span style={{ color: '#dc2626', fontSize: 11, marginTop: 3, display: 'block' }}>{errors.party}</span>}
+                </>
               )}
             </FormGroup>
             <FormGroup label="Date *">
-              <input className="form-input" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+              <input
+                className={`form-input${errors.date ? ' input-error' : ''}`}
+                type="date"
+                value={form.date}
+                onChange={e => { setForm(f => ({ ...f, date: e.target.value })); setErrors(p => ({ ...p, date: undefined })); }}
+              />
+              {errors.date && <span style={{ color: '#dc2626', fontSize: 11, marginTop: 3, display: 'block' }}>{errors.date}</span>}
             </FormGroup>
             <FormGroup label="Linked Lot (optional)">
               <select className="form-select" value={form.linkedLot} onChange={e => setForm(f => ({ ...f, linkedLot: e.target.value }))}>
                 <option value="">None</option>
-                {ghausiaLots.map(l => <option key={l.id} value={l.lotNo}>{l.lotNo} / {l.designNo} — {l.status}</option>)}
+                {ghausiaLots.map(l => <option key={l.id} value={l.lotNo || l.lotNumber}>{l.lotNo || l.lotNumber} / {l.designNo} — {l.status}</option>)}
               </select>
             </FormGroup>
             <FormGroup label="Note">

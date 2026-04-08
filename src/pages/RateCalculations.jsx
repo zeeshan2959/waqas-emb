@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import Swal from "sweetalert2";
 import { Modal, FormGroup, ActionBtn } from "../components/UI";
 import { apiService } from "../services/api";
 import "./calculator.css";
@@ -60,7 +61,7 @@ export default function StitchCalculator() {
 
   const handleSaveDesign = async () => {
     if (!designNumber.trim()) {
-      alert("Please enter a design number");
+      Swal.fire({ icon: 'warning', title: 'Required', text: 'Please enter a design number.' });
       return;
     }
 
@@ -81,9 +82,10 @@ export default function StitchCalculator() {
       setSaveModal(false);
       setDesignNumber("");
       await loadSavedDesigns();
+      Swal.fire({ icon: 'success', title: 'Saved!', text: 'Design saved successfully.', timer: 1500, showConfirmButton: false });
     } catch (error) {
       console.error("Failed to save design:", error);
-      alert("Failed to save design. Please try again.");
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to save design. Please try again.' });
     } finally {
       setLoading(false);
     }
@@ -96,14 +98,23 @@ export default function StitchCalculator() {
   };
 
   const deleteDesign = async (id) => {
-    if (!confirm("Are you sure you want to delete this design?")) return;
+    const result = await Swal.fire({
+      title: 'Delete Design?',
+      text: 'This action cannot be undone.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, delete it',
+    });
+    if (!result.isConfirmed) return;
 
     try {
       await apiService.deleteSavedDesign(id);
       await loadSavedDesigns();
     } catch (error) {
       console.error("Failed to delete design:", error);
-      alert("Failed to delete design. Please try again.");
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to delete design. Please try again.' });
     }
   };
 

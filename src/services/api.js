@@ -1,5 +1,5 @@
-// API utility for JSON Server
-const API_BASE_URL = 'http://localhost:3002';
+// API utility for Express.js Backend
+const API_BASE_URL = 'http://localhost:3001/api';
 
 class ApiService {
   constructor() {
@@ -134,6 +134,13 @@ class ApiService {
   async updatePartyEdit(id, data) {
     return this.request(`/partyEdits/${id}`, {
       method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async upsertPartyEditByLotId(lotId, data) {
+    return this.request(`/partyEdits/lot/${lotId}`, {
+      method: 'PUT',
       body: JSON.stringify(data),
     });
   }

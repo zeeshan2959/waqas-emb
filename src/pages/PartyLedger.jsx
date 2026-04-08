@@ -2,25 +2,59 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, StatusBadge, SearchBar, EmptyState } from '../components/UI';
 
+// From the party's perspective: dispatched = In Progress, received back = Completed
+const toLedgerStatus = (status) => {
+  if (!status) return 'In Progress';
+  const s = String(status).trim().toLowerCase();
+  if (s === 'completed' || s === 'received back') return 'Completed';
+  return 'In Progress';
+};
+
+const toTitleCase = (s) =>
+  String(s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
 export default function PartyLedger() {
-  const { ghausiaLots, updateLot, partyEdits, updatePartyEdit, getPartyName, parties } = useApp();
+  const { ghausiaLots, updateLot, partyEdits, updatePartyEdit, parties } = useApp();
   const [search, setSearch] = useState('');
   const [partyFilter, setPartyFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  // Only show lots that have been assigned to a party (all non-null partyId lots)
-  const assignedLots = useMemo(() => {
-    return ghausiaLots.filter(l => l.partyId);
-  }, [ghausiaLots]);
+  // Only lots assigned to a party
+  const assignedLots = useMemo(() =>
+    ghausiaLots.filter(l => l.partyId || l.partyName),
+    [ghausiaLots]
+  );
+
+  const getDisplayStatus = (l) => {
+    const pe = partyEdits[l.id] || {};
+    // If overrideStatus explicitly set to Completed, honour it
+    if (pe.overrideStatus && pe.overrideStatus.toLowerCase() === 'completed') return 'Completed';
+    // Otherwise derive from lot status
+    return toLedgerStatus(pe.overrideStatus || l.status);
+  };
+
+  const getPartyNameLocal = (partyId, fallback) =>
+    parties.find(p => p.id === partyId)?.name || fallback || '—';
+
+  // Bill amount: prefer explicit partyBillAmount (> 0), else use lot's billAmount
+  const getDisplayBill = (l) => {
+    const pe = partyEdits[l.id] || {};
+    if (pe.partyBillAmount != null && Number(pe.partyBillAmount) > 0) {
+      return Number(pe.partyBillAmount);
+    }
+    return Number(l.billAmount || 0);
+  };
 
   const filtered = useMemo(() => assignedLots.filter(l => {
     const q = search.toLowerCase();
-    const matchQ = !q || l.lotNo.toLowerCase().includes(q) || l.designNo.toLowerCase().includes(q) || l.description.toLowerCase().includes(q);
+    const lotLabel = (l.lotNo || l.lotNumber || '').toLowerCase();
+    const matchQ = !q || lotLabel.includes(q)
+      || l.designNo.toLowerCase().includes(q)
+      || l.description.toLowerCase().includes(q);
     const matchP = partyFilter === 'All' || String(l.partyId) === partyFilter;
-    const pe = partyEdits[l.id] || {};
-    const displayStatus = pe.overrideStatus || l.status;
+    const displayStatus = getDisplayStatus(l);
     const matchS = statusFilter === 'All' || displayStatus === statusFilter;
     return matchQ && matchP && matchS;
   }), [assignedLots, search, partyFilter, statusFilter, partyEdits]);
@@ -30,40 +64,61 @@ export default function PartyLedger() {
     setEditForm({
       allotDate: lot.allotDate || '',
       completeDate: pe.completeDate || (initialStatus === 'Completed' ? new Date().toISOString().slice(0, 10) : ''),
-      status: initialStatus || pe.overrideStatus || lot.status,
-      billAmount: pe.partyBillAmount !== undefined ? pe.partyBillAmount : (lot.billAmount || ''),
+      status: initialStatus || getDisplayStatus(lot),
+      billAmount: getDisplayBill(lot) || '',
       receipt: pe.receipt || '',
       notes: pe.notes || '',
+      partyId: lot.partyId || '',
+      partyName: getPartyNameLocal(lot.partyId, lot.partyName),
     });
     setEditingId(lot.id);
   };
 
   const handleSave = async () => {
     const lot = ghausiaLots.find(l => l.id === editingId);
+    if (!lot) return;
+
+    const partyChanged = editForm.partyId && editForm.partyId !== lot.partyId;
 
     if (editForm.status === 'Completed') {
-      // Mark ledger entry done and also update Ghausia collection item
       await updatePartyEdit(editingId, {
         completeDate: editForm.completeDate || new Date().toISOString().slice(0, 10),
-        partyBillAmount: editForm.billAmount,
+        partyBillAmount: Number(editForm.billAmount) || 0,
         receipt: editForm.receipt,
         notes: editForm.notes,
         overrideStatus: 'Completed',
       });
-      await updateLot(editingId, {
-        status: 'Received Back',
+      const lotUpdates = {
+        status: 'received back',
         receivedBackDate: editForm.completeDate || new Date().toISOString().slice(0, 10),
-      });
+      };
+      if (partyChanged) {
+        const sel = parties.find(p => p.id === editForm.partyId);
+        lotUpdates.partyId = editForm.partyId;
+        lotUpdates.partyName = sel?.name || editForm.partyName;
+      }
+      await updateLot(editingId, lotUpdates);
     } else {
       await updatePartyEdit(editingId, {
-        completeDate: editForm.completeDate,
-        partyBillAmount: editForm.billAmount,
+        completeDate: editForm.completeDate || '',
+        partyBillAmount: Number(editForm.billAmount) || 0,
         receipt: editForm.receipt,
         notes: editForm.notes,
         overrideStatus: 'In Progress',
       });
-      if (lot.status !== 'Dispatched') {
-        await updateLot(editingId, { status: 'Dispatched', dispatchDate: lot.dispatchDate || new Date().toISOString().slice(0, 10) });
+      const lotUpdates = {};
+      const lowerStatus = (lot.status || '').toLowerCase();
+      if (lowerStatus !== 'dispatched') {
+        lotUpdates.status = 'dispatched';
+        lotUpdates.dispatchDate = lot.dispatchDate || new Date().toISOString().slice(0, 10);
+      }
+      if (partyChanged) {
+        const sel = parties.find(p => p.id === editForm.partyId);
+        lotUpdates.partyId = editForm.partyId;
+        lotUpdates.partyName = sel?.name || editForm.partyName;
+      }
+      if (Object.keys(lotUpdates).length > 0) {
+        await updateLot(editingId, lotUpdates);
       }
     }
 
@@ -72,18 +127,9 @@ export default function PartyLedger() {
 
   const totals = useMemo(() => ({
     lots: filtered.length,
-    billTotal: filtered.reduce((s, l) => {
-      const pe = partyEdits[l.id] || {};
-      return s + Number(pe.partyBillAmount !== undefined ? pe.partyBillAmount : (l.billAmount || 0));
-    }, 0),
-    completed: filtered.filter(l => {
-      const pe = partyEdits[l.id] || {};
-      return (pe.overrideStatus || l.status) === 'Completed';
-    }).length,
-    inProgress: filtered.filter(l => {
-      const pe = partyEdits[l.id] || {};
-      return (pe.overrideStatus || l.status) === 'In Progress';
-    }).length,
+    billTotal: filtered.reduce((s, l) => s + getDisplayBill(l), 0),
+    completed: filtered.filter(l => getDisplayStatus(l) === 'Completed').length,
+    inProgress: filtered.filter(l => getDisplayStatus(l) === 'In Progress').length,
     withReceipt: filtered.filter(l => partyEdits[l.id]?.receipt).length,
   }), [filtered, partyEdits]);
 
@@ -92,10 +138,11 @@ export default function PartyLedger() {
       openEdit(lot, 'Completed');
       return;
     }
-
+    // In Progress
     await updatePartyEdit(lot.id, { overrideStatus: 'In Progress' });
-    if (lot.status !== 'Dispatched') {
-      await updateLot(lot.id, { status: 'Dispatched', dispatchDate: new Date().toISOString().slice(0, 10) });
+    const lowerStatus = (lot.status || '').toLowerCase();
+    if (lowerStatus !== 'dispatched') {
+      await updateLot(lot.id, { status: 'dispatched', dispatchDate: new Date().toISOString().slice(0, 10) });
     }
   };
 
@@ -135,8 +182,8 @@ export default function PartyLedger() {
         </select>
         <select className="form-select" style={{ width: 160 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           <option value="All">All Statuses</option>
-          <option>Completed</option>
-          <option>In Progress</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Completed">Completed</option>
         </select>
       </div>
 
@@ -151,7 +198,6 @@ export default function PartyLedger() {
                 <th>Description</th>
                 <th>Fabric</th>
                 <th>Colors</th>
-                <th>Pieces</th>
                 <th>Allot Date</th>
                 <th>Complete Date</th>
                 <th>Party Name</th>
@@ -163,42 +209,41 @@ export default function PartyLedger() {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={13}><EmptyState message="No assigned lots found" /></td></tr>
+                <tr><td colSpan={12}><EmptyState message="No assigned lots found" /></td></tr>
               ) : filtered.map(l => {
                 const pe = partyEdits[l.id] || {};
-                const displayStatus = pe.overrideStatus || l.status;
-                const displayBill = pe.partyBillAmount !== undefined ? pe.partyBillAmount : l.billAmount;
+                const displayStatus = getDisplayStatus(l);
+                const displayBill = getDisplayBill(l);
                 return (
                   <tr key={l.id}>
-                    <td style={{ fontWeight: 700, color: '#1e40af' }}>{l.lotNo}</td>
+                    <td style={{ fontWeight: 700, color: '#1e40af' }}>{l.lotNo || l.lotNumber}</td>
                     <td style={{ fontWeight: 600 }}>{l.designNo}</td>
                     <td>{l.description}</td>
                     <td>
                       <span style={{ background: '#F0F9FF', color: '#0369a1', border: '1px solid #BAE6FD', borderRadius: 6, padding: '2px 8px', fontSize: 12 }}>
-                        {l.fabric}
+                        {l.fabric || l.itemType}
                       </span>
                     </td>
                     <td>{l.colors}</td>
-                    <td>{l.pieces}</td>
                     <td>{l.allotDate}</td>
                     <td>{pe.completeDate || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                    <td style={{ fontWeight: 500 }}>{getPartyName(l.partyId)}</td>
+                    <td style={{ fontWeight: 500 }}>{getPartyNameLocal(l.partyId, l.partyName)}</td>
                     <td>
                       <select
                         className="form-select"
                         style={{ width: 140, minWidth: 140, fontSize: 12, padding: '5px 8px' }}
-                        value={displayStatus === 'Received Back' ? 'Completed' : displayStatus}
+                        value={displayStatus}
                         onChange={(e) => handleRowStatusChange(l, e.target.value)}
                       >
-                        <option>In Progress</option>
-                        <option>Completed</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Completed">Completed</option>
                       </select>
                       <div style={{ marginTop: 4 }}>
-                        <StatusBadge status={displayStatus === 'Received Back' ? 'Completed' : displayStatus} />
+                        <StatusBadge status={displayStatus} />
                       </div>
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: '#1e40af' }}>
-                      ₨{Number(displayBill || 0).toLocaleString()}
+                      ₨{displayBill.toLocaleString()}
                     </td>
                     <td>
                       {pe.receipt
@@ -225,7 +270,7 @@ export default function PartyLedger() {
       {/* Edit Modal */}
       {editingId && editingLot && (
         <Modal
-          title={`Edit — ${editingLot.lotNo} / ${editingLot.designNo}`}
+          title={`Edit — ${editingLot.lotNo || editingLot.lotNumber} / ${editingLot.designNo}`}
           onClose={() => setEditingId(null)}
           footer={
             <>
@@ -239,22 +284,34 @@ export default function PartyLedger() {
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lot Info (read-only)</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px', fontSize: 13 }}>
               <div><span style={{ color: 'var(--text-muted)' }}>Description: </span>{editingLot.description}</div>
-              <div><span style={{ color: 'var(--text-muted)' }}>Fabric: </span>{editingLot.fabric}</div>
+              <div><span style={{ color: 'var(--text-muted)' }}>Fabric: </span>{editingLot.fabric || editingLot.itemType}</div>
               <div><span style={{ color: 'var(--text-muted)' }}>Colors: </span>{editingLot.colors}</div>
               <div><span style={{ color: 'var(--text-muted)' }}>Pieces: </span>{editingLot.pieces}</div>
-              <div><span style={{ color: 'var(--text-muted)' }}>Party: </span>{getPartyName(editingLot.partyId)}</div>
-              <div><span style={{ color: 'var(--text-muted)' }}>Ghausia Status: </span><StatusBadge status={editingLot.status} /></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>Ghausia Status: </span><StatusBadge status={toTitleCase(editingLot.status)} /></div>
             </div>
           </div>
 
           <div className="grid-2">
+            <FormGroup label="Party Name">
+              <select
+                className="form-select"
+                value={editForm.partyId}
+                onChange={e => {
+                  const sel = parties.find(p => p.id === e.target.value);
+                  setEditForm(f => ({ ...f, partyId: e.target.value, partyName: sel?.name || '' }));
+                }}
+              >
+                <option value="">— Select Party —</option>
+                {parties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </FormGroup>
             <FormGroup label="Allot Date">
               <input className="form-input" type="date" value={editForm.allotDate} onChange={e => setEditForm(f => ({ ...f, allotDate: e.target.value }))} />
             </FormGroup>
             <FormGroup label="Status">
               <select className="form-select" value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}>
-                <option>Completed</option>
-                <option>In Progress</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
               </select>
             </FormGroup>
             {editForm.status === 'Completed' && (
@@ -263,9 +320,10 @@ export default function PartyLedger() {
               </FormGroup>
             )}
             <FormGroup label="Bill Amount (₨)">
-              <input className="form-input" type="number" value={editForm.billAmount} onChange={e => setEditForm(f => ({ ...f, billAmount: e.target.value }))} />
+              <input className="form-input" type="number" value={editForm.billAmount} onChange={e => setEditForm(f => ({ ...f, billAmount: e.target.value }))} placeholder="0" />
             </FormGroup>
           </div>
+
           <FormGroup label="Upload Bill Receipt (filename)">
             <input
               className="form-input"
@@ -281,9 +339,9 @@ export default function PartyLedger() {
             <textarea className="form-textarea" rows={2} value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." style={{ resize: 'vertical' }} />
           </FormGroup>
 
-          {editForm.status === 'Completed' && editingLot.status !== 'Completed' && (
+          {editForm.status === 'Completed' && (
             <div className="alert alert-warning">
-              <strong>Note:</strong> Marking as Completed will update the Ghausia lot status to "Received Back" with the complete date.
+              <strong>Note:</strong> Marking as Completed will update the Ghausia lot status to "Received Back".
             </div>
           )}
         </Modal>

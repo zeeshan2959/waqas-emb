@@ -81,6 +81,10 @@ tbody tr:last-child td { border-bottom: none; }
   border-color: var(--primary-light);
   box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
 }
+.input-error {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 3px rgba(220,38,38,0.1) !important;
+}
 .form-label {
   display: block;
   font-size: 12.5px;
