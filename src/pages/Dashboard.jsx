@@ -1,12 +1,22 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { StatusBadge } from '../components/UI';
+import Loader from '../components/Loader';
+import LoaderDashboard from '../components/LoaderDashboard';
 
 const toTitleCase = (s) =>
   String(s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
 export default function Dashboard() {
-  const { ghausiaLots, partyEdits, payments, getPartyName, parties } = useApp();
+  const { ghausiaLots, partyEdits, payments, getPartyName, parties, initialDataLoading } = useApp();
+
+  if (initialDataLoading) {
+    return (
+      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <LoaderDashboard height={30} width={30}/>
+      </div>
+    );
+  }
 
   // Lots use lowercase status: 'pending', 'dispatched', 'received back', 'completed'
   const byStatus = (s) => ghausiaLots.filter(l => l.status === s).length;

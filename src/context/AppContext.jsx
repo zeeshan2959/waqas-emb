@@ -69,6 +69,7 @@ export function AppProvider({ children }) {
   const [ghausiaLots, setGhausiaLots] = useState(INITIAL_GHAUSIA);
   const [partyEdits, setPartyEdits] = useState(INITIAL_PARTY_EDITS);
   const [payments, setPayments] = useState(INITIAL_PAYMENTS);
+  const [initialDataLoading, setInitialDataLoading] = useState(true);
 
   useEffect(() => {
     async function loadAppData() {
@@ -104,6 +105,8 @@ export function AppProvider({ children }) {
         }
       } catch (error) {
         console.error('Unable to load persisted data from JSON Server', error);
+      } finally {
+        setInitialDataLoading(false);
       }
     }
 
@@ -185,6 +188,7 @@ export function AppProvider({ children }) {
       partyEdits, updatePartyEdit,
       payments, addPayment, deletePayment,
       getPartyById, getPartyName,
+      initialDataLoading,
     }}>
       {children}
     </AppContext.Provider>

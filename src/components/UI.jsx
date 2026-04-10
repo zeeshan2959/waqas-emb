@@ -1,4 +1,5 @@
 import React from 'react';
+import Loader from './Loader';
 
 export function Modal({ title, onClose, children, footer, wide }) {
   return (
@@ -79,20 +80,22 @@ export function EmptyState({ message = 'No records found' }) {
   );
 }
 
-export function ConfirmDialog({ message, onConfirm, onCancel }) {
+export function ConfirmDialog({ message, onConfirm, onCancel, confirming }) {
   return (
-    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget && !confirming) onCancel(); }}>
       <div className="modal-box" style={{ maxWidth: 400 }}>
         <div className="modal-header">
           <h3>Confirm Delete</h3>
-          <button className="modal-close" onClick={onCancel}>×</button>
+          <button className="modal-close" onClick={onCancel} disabled={confirming}>×</button>
         </div>
         <div className="modal-body">
           <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{message}</p>
         </div>
         <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-danger" onClick={onConfirm}>Delete</button>
+          <button className="btn btn-ghost" onClick={onCancel} disabled={confirming}>Cancel</button>
+          <button className="btn btn-danger" onClick={onConfirm} disabled={confirming} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            {confirming ? <><Loader /> Deleting…</> : 'Delete'}
+          </button>
         </div>
       </div>
     </div>
