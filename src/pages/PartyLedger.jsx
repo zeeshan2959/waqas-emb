@@ -24,8 +24,22 @@ export default function PartyLedger() {
   // Only lots assigned to a party
   const assignedLots = useMemo(() =>
     ghausiaLots.filter(l => l.partyId || l.partyName),
-    [ghausiaLots]
-  );
+  [ghausiaLots]
+);
+
+  const formatYmd = (value) => {
+    if (!value) return '';
+    const d = typeof value === 'string' ? new Date(value) : value;
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toISOString().slice(0, 10);
+  };
+  
+
+  /** Party ledger completion date: party edit override, else Ghausia lot received-back date (syncs to PartyLedger.completeDate on server). */
+  const getDisplayCompleteDate = (l, pe) => {
+    const ymd = formatYmd(pe.completeDate) || formatYmd(l.receivedBackDate);
+    return ymd || null;
+  };
 
   const getDisplayStatus = (l) => {
     const pe = partyEdits[l.id] || {};
@@ -40,12 +54,16 @@ export default function PartyLedger() {
 
   // Bill amount: prefer explicit partyBillAmount (> 0), else use lot's billAmount
   const getDisplayBill = (l) => {
+    console.log(partyEdits, 'partyEdits');
     const pe = partyEdits[l.id] || {};
+    console.log(pe, 'pe');
     if (pe.partyBillAmount != null && Number(pe.partyBillAmount) > 0) {
       return Number(pe.partyBillAmount);
     }
-    return Number(l.billAmount || 0);
+    return Number(0);
   };
+
+  // console.log(assignedLots, 'partyEdits');
 
   const filtered = useMemo(() => assignedLots.filter(l => {
     const q = search.toLowerCase();
@@ -61,10 +79,15 @@ export default function PartyLedger() {
 
   const openEdit = (lot, initialStatus) => {
     const pe = partyEdits[lot.id] || {};
+    const statusForForm = initialStatus || getDisplayStatus(lot);
+    const existingComplete =
+      formatYmd(pe.completeDate) || formatYmd(lot.receivedBackDate) || '';
     setEditForm({
       allotDate: lot.allotDate || '',
-      completeDate: pe.completeDate || (initialStatus === 'Completed' ? new Date().toISOString().slice(0, 10) : ''),
-      status: initialStatus || getDisplayStatus(lot),
+      completeDate:
+        existingComplete
+        || (statusForForm === 'Completed' ? new Date().toISOString().slice(0, 10) : ''),
+      status: statusForForm,
       billAmount: getDisplayBill(lot) || '',
       receipt: pe.receipt || '',
       notes: pe.notes || '',
@@ -100,7 +123,7 @@ export default function PartyLedger() {
       await updateLot(editingId, lotUpdates);
     } else {
       await updatePartyEdit(editingId, {
-        completeDate: editForm.completeDate || '',
+        completeDate: editForm.completeDate || null,
         partyBillAmount: Number(editForm.billAmount) || 0,
         receipt: editForm.receipt,
         notes: editForm.notes,
@@ -124,6 +147,19 @@ export default function PartyLedger() {
 
     setEditingId(null);
   };
+  const totalsValues = filtered.reduce(
+    (acc, item) => {
+      if (item.status === "dispatched") {
+        acc.dispatched += item.billAmount || 0;
+      }
+      if (item.status === "received back") {
+        acc.receivedBack += item.billAmount || 0;
+      }
+      return acc;
+    },
+    { dispatched: 0, receivedBack: 0 }
+  );
+  console.log(totalsValues, 'totalsValues');
 
   const totals = useMemo(() => ({
     lots: filtered.length,
@@ -198,6 +234,7 @@ export default function PartyLedger() {
                 <th>Description</th>
                 <th>Fabric</th>
                 <th>Colors</th>
+                <th>Pieces</th>
                 <th>Allot Date</th>
                 <th>Complete Date</th>
                 <th>Party Name</th>
@@ -211,9 +248,11 @@ export default function PartyLedger() {
               {filtered.length === 0 ? (
                 <tr><td colSpan={12}><EmptyState message="No assigned lots found" /></td></tr>
               ) : filtered.map(l => {
+                // console.log(l, 'l');
                 const pe = partyEdits[l.id] || {};
                 const displayStatus = getDisplayStatus(l);
                 const displayBill = getDisplayBill(l);
+                const displayComplete = getDisplayCompleteDate(l, pe);
                 return (
                   <tr key={l.id}>
                     <td style={{ fontWeight: 700, color: '#1e40af' }}>{l.lotNo || l.lotNumber}</td>
@@ -225,9 +264,12 @@ export default function PartyLedger() {
                       </span>
                     </td>
                     <td>{l.colors}</td>
+                    <td>{l.pieces}</td>
                     <td>{l.allotDate}</td>
-                    <td>{new Date(pe.completeDate)?.toISOString()?.slice(0, 10) || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                    <td style={{ fontWeight: 500 }}>{l.partyId}</td>
+                    <td style={{ fontWeight: 500 }}>
+                      {displayComplete || <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                    </td>
+                    <td>{l.partyId}</td>
                     <td>
                       <select
                         className="form-select"
