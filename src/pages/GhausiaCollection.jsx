@@ -24,8 +24,8 @@ function LotForm({ initial, onSave, onClose, parties }) {
     itemType: FABRICS.includes(initial.itemType || initial.fabric) ? (initial.itemType || initial.fabric) : '__custom',
     fabric: FABRICS.includes(initial.itemType || initial.fabric) ? (initial.itemType || initial.fabric) : '__custom',
     customFabric: FABRICS.includes(initial.itemType || initial.fabric) ? '' : (initial.customFabric || initial.itemType || initial.fabric || ''),
-    quantity: initial.quantity ?? initial.pieces ?? '',
-    pieces: initial.pieces ?? initial.quantity ?? '',
+    // quantity: initial.quantity ?? initial.pieces ?? '',
+    pieces: initial.pieces ?? '',
     partyId: initial.partyId || (parties.find(p => p.name === (initial.partyName || initial.party))?.id) || '',
     partyName: (parties.find(p => p.id === initial.partyId)?.name) || initial.partyName || '',
   } : blank);
@@ -105,9 +105,9 @@ function LotForm({ initial, onSave, onClose, parties }) {
             {COLOR_OPTIONS.map(n => <option key={n} value={n}>{n} color{n !== 1 ? 's' : ''}</option>)}
           </select>
         </FormGroup>
-        {/* <FormGroup label="Total Amount (₨)">
-          <input className="form-input" type="number" min="0" value={form.totalAmount} onChange={e => set('totalAmount', e.target.value)} placeholder="0" />
-        </FormGroup> */}
+        <FormGroup label="Pieces">
+          <input className="form-input" type="number" min="0" value={form.pieces} onChange={e => set('pieces', e.target.value)} placeholder="0" />
+        </FormGroup>
         <FormGroup label="Allot Date">
           <input className="form-input" type="date" value={form.allotDate} onChange={e => set('allotDate', e.target.value)} />
         </FormGroup>
@@ -393,7 +393,7 @@ export default function GhausiaCollection() {
               <tr>
                 <th>Lot No</th><th>Design No</th><th>Description</th><th>Item Type</th>
                 <th>Colors</th>
-                {/* <th>Quantity</th> */}
+                <th>Pieces</th>
                 <th>Allot Date</th><th>Party Name</th>
                 <th>Status</th><th style={{ textAlign: 'right' }}>Bill Amount</th><th>Actions</th>
               </tr>
@@ -408,7 +408,7 @@ export default function GhausiaCollection() {
                   <td>{l.description}</td>
                   <td><span style={{ background: '#F0F9FF', color: '#0369a1', border: '1px solid #BAE6FD', borderRadius: 6, padding: '2px 8px', fontSize: 12 }}>{l.itemType || l.fabric}</span></td>
                   <td>{l.colors}</td>
-                  {/* <td>{l.quantity}</td> */}
+                  <td>{l.pieces}</td>
                   <td>{l.allotDate}</td>
                   <td>
                     <select
@@ -434,11 +434,11 @@ export default function GhausiaCollection() {
                         <option key={s} value={s}>{s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>
                       ))}
                     </select>
-                    <div style={{ marginTop: 4 }}>
+                    {/* <div style={{ marginTop: 4 }}>
                       <StatusBadge status={statusMeta[l.status]?.label || l.status} />
-                    </div>
-                    {l.dispatchDate && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>Dispatch: {l.dispatchDate}</div>}
-                    {l.receivedBackDate && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 1 }}>Received: {l.receivedBackDate}</div>}
+                    </div> */}
+                    {l.dispatchDate && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 3, fontWeight:'500' }}>Dispatch: {l.dispatchDate}</div>}
+                    {l.receivedBackDate && <div style={{ fontSize: 12, color: 'green', marginTop: 1, fontWeight:'500' }}>Received: {l.receivedBackDate}</div>}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: '#1e40af' }}>
                     ₨{Number(l.billAmount || 0).toLocaleString()}

@@ -33,6 +33,7 @@ export default function PartyLedger() {
     if (Number.isNaN(d.getTime())) return '';
     return d.toISOString().slice(0, 10);
   };
+  
 
   /** Party ledger completion date: party edit override, else Ghausia lot received-back date (syncs to PartyLedger.completeDate on server). */
   const getDisplayCompleteDate = (l, pe) => {
@@ -53,12 +54,16 @@ export default function PartyLedger() {
 
   // Bill amount: prefer explicit partyBillAmount (> 0), else use lot's billAmount
   const getDisplayBill = (l) => {
+    console.log(partyEdits, 'partyEdits');
     const pe = partyEdits[l.id] || {};
+    console.log(pe, 'pe');
     if (pe.partyBillAmount != null && Number(pe.partyBillAmount) > 0) {
       return Number(pe.partyBillAmount);
     }
-    return Number(l.billAmount || 0);
+    return Number(0);
   };
+
+  // console.log(assignedLots, 'partyEdits');
 
   const filtered = useMemo(() => assignedLots.filter(l => {
     const q = search.toLowerCase();
@@ -142,6 +147,19 @@ export default function PartyLedger() {
 
     setEditingId(null);
   };
+  const totalsValues = filtered.reduce(
+    (acc, item) => {
+      if (item.status === "dispatched") {
+        acc.dispatched += item.billAmount || 0;
+      }
+      if (item.status === "received back") {
+        acc.receivedBack += item.billAmount || 0;
+      }
+      return acc;
+    },
+    { dispatched: 0, receivedBack: 0 }
+  );
+  console.log(totalsValues, 'totalsValues');
 
   const totals = useMemo(() => ({
     lots: filtered.length,
@@ -216,6 +234,7 @@ export default function PartyLedger() {
                 <th>Description</th>
                 <th>Fabric</th>
                 <th>Colors</th>
+                <th>Pieces</th>
                 <th>Allot Date</th>
                 <th>Complete Date</th>
                 <th>Party Name</th>
@@ -229,6 +248,7 @@ export default function PartyLedger() {
               {filtered.length === 0 ? (
                 <tr><td colSpan={12}><EmptyState message="No assigned lots found" /></td></tr>
               ) : filtered.map(l => {
+                // console.log(l, 'l');
                 const pe = partyEdits[l.id] || {};
                 const displayStatus = getDisplayStatus(l);
                 const displayBill = getDisplayBill(l);
@@ -244,6 +264,7 @@ export default function PartyLedger() {
                       </span>
                     </td>
                     <td>{l.colors}</td>
+                    <td>{l.pieces}</td>
                     <td>{l.allotDate}</td>
                     <td style={{ fontWeight: 500 }}>
                       {displayComplete || <span style={{ color: 'var(--text-muted)' }}>—</span>}
