@@ -94,7 +94,11 @@ export function AppProvider({ children }) {
 
         if (Array.isArray(remotePartyEdits)) {
           setPartyEdits(remotePartyEdits.reduce((acc, item) => {
-            acc[item.lotId] = item;
+            acc[item.lotId] = {
+              ...item,
+              completeDate: item.completeDate ? normalizeDateString(item.completeDate) : '',
+              allotDate: item.allotDate ? normalizeDateString(item.allotDate) : '',
+            };
             return acc;
           }, {}));
         }
@@ -143,8 +147,13 @@ export function AppProvider({ children }) {
   const updatePartyEdit = async (lotId, data) => {
     try {
       const result = await apiService.upsertPartyEditByLotId(lotId, data);
-      setPartyEdits(prev => ({ ...prev, [lotId]: result }));
-      return result;
+      const normalizedEdit = {
+        ...result,
+        completeDate: result.completeDate ? normalizeDateString(result.completeDate) : '',
+        allotDate: result.allotDate ? normalizeDateString(result.allotDate) : '',
+      };
+      setPartyEdits(prev => ({ ...prev, [lotId]: normalizedEdit }));
+      return normalizedEdit;
     } catch (error) {
       console.error('Error updating party edit:', error);
       const fallback = { ...data, lotId };

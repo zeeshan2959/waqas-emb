@@ -112,11 +112,16 @@ function LotForm({ initial, onSave, onClose, parties }) {
           <input className="form-input" type="date" value={form.allotDate} onChange={e => set('allotDate', e.target.value)} />
         </FormGroup>
         <FormGroup label="Party">
-          <select className="form-select" value={form.partyId} onChange={e => {
-            const selectedParty = parties.find(p => p.id === e.target.value);
-            set('partyId', e.target.value);
-            set('partyName', selectedParty ? selectedParty.name : '');
-          }}>
+          <select
+            className="form-select"
+            value={form.partyId}
+            autoFocus={!initial}
+            onChange={e => {
+              const selectedParty = parties.find(p => p.id === e.target.value);
+              set('partyId', e.target.value);
+              set('partyName', selectedParty ? selectedParty.name : '');
+            }}
+          >
             <option value="">— Select Party —</option>
             {parties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
