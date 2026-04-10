@@ -1,10 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Modal, FormGroup, ActionBtn, SearchBar, EmptyState, ConfirmDialog } from '../components/UI';
+import { Modal, FormGroup, SearchBar, EmptyState, ConfirmDialog } from '../components/UI';
+import Loader from '../components/Loader';
 
-function PartyForm({ initial, onSave, onClose }) {
-  const [form, setForm] = useState(initial || { name: '', phone: '', address: '' });
+function toPartyFormFields(initial) {
+  if (!initial) return { name: '', phone: '', address: '' };
+  return {
+    name: initial.name ?? '',
+    phone: initial.phone ?? '',
+    address: initial.address ?? '',
+  };
+}
+
+function PartyForm({ initial, onSave, onClose, saving }) {
+  const [form, setForm] = useState(() => toPartyFormFields(initial));
   const [errors, setErrors] = useState({});
+
+  useEffect(() => {
+    setForm(toPartyFormFields(initial));
+  }, [initial]);
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const validate = () => {
     const e = {};
@@ -25,18 +40,22 @@ function PartyForm({ initial, onSave, onClose }) {
         <textarea className="form-textarea" rows={3} value={form.address} onChange={e => set('address', e.target.value)} placeholder="Full address..." style={{ resize: 'vertical' }} />
       </FormGroup>
       <div className="modal-footer" style={{ padding: '16px 0 0', borderTop: '1px solid var(--border)', marginTop: 8 }}>
-        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={() => { if (validate()) onSave(form); }}>Save Party</button>
+        <button className="btn btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
+        <button className="btn btn-primary" disabled={saving} onClick={async () => { if (validate()) await onSave(form); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          {saving ? <><Loader /> Saving…</> : 'Save Party'}
+        </button>
       </div>
     </>
   );
 }
 
 export default function Parties() {
-  const { parties, addParty, updateParty, deleteParty, ghausiaLots, getPartyName, partyEdits, payments } = useApp();
+  const { parties, addParty, updateParty, deleteParty, ghausiaLots, getPartyName, partyEdits, payments, initialDataLoading } = useApp();
   const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [partySaving, setPartySaving] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [transactionParty, setTransactionParty] = useState(null);
 
@@ -45,40 +64,72 @@ export default function Parties() {
     return !q || p.name.toLowerCase().includes(q) || p.phone?.toLowerCase().includes(q) || p.address?.toLowerCase().includes(q);
   });
 
+  const lotStatusKey = (l) => {
+    const pe = partyEdits[l.id] || {};
+    return String(pe.overrideStatus || l.status || '').toLowerCase();
+  };
+
   const getLotStats = (partyId) => {
-    const lots = ghausiaLots.filter(l => l.partyId === partyId);
+    const pid = String(partyId);
+    const lots = ghausiaLots.filter(l => String(l.partyId) === pid);
+    const partyName = getPartyName(partyId);
     const totalPayable = lots.reduce((s, l) => {
       const pe = partyEdits[l.id] || {};
       return s + Number(pe.partyBillAmount !== undefined ? pe.partyBillAmount : (l.billAmount || 0));
     }, 0);
-    const totalPaid = payments.filter(p => p.type === 'Paid' && p.party === getPartyName(partyId)).reduce((s, p) => s + p.amount, 0);
+    const totalPaid = payments.filter(p => {
+      if (p.type !== 'Paid') return false;
+      const payParty = String(p.party || '').trim();
+      return payParty === String(partyName).trim();
+    }).reduce((s, p) => s + Number(p.amount || 0), 0);
     const remaining = totalPayable - totalPaid;
     return {
       total: lots.length,
-      active: lots.filter(l => {
-        const pe = partyEdits[l.id] || {};
-        const status = pe.overrideStatus || l.status;
-        return ['Pending', 'Dispatched', 'In Progress'].includes(status);
-      }).length,
-      completed: lots.filter(l => {
-        const pe = partyEdits[l.id] || {};
-        return (pe.overrideStatus || l.status) === 'Completed';
-      }).length,
+      active: lots.filter(l => lotStatusKey(l) !== 'completed').length,
+      completed: lots.filter(l => lotStatusKey(l) === 'completed').length,
       totalValue: totalPayable,
       remaining,
     };
   };
 
-  const handleSave = async (form) => {
-    if (editing) await updateParty(editing.id, form);
-    else await addParty(form);
-    setModal(null); setEditing(null);
+  const handleSave = async (formData) => {
+    setPartySaving(true);
+    try {
+      const payload = {
+        name: formData.name.trim(),
+        phone: (formData.phone || '').trim(),
+        address: (formData.address || '').trim(),
+      };
+      if (editing) {
+        const pid = editing.id || editing._id;
+        await updateParty(String(pid), payload);
+      } else {
+        await addParty(payload);
+      }
+      setModal(null); setEditing(null);
+    } finally {
+      setPartySaving(false);
+    }
   };
 
   const handleDelete = async () => {
-    await deleteParty(deleteTarget.id);
-    setDeleteTarget(null);
+    setDeleteLoading(true);
+    try {
+      const pid = deleteTarget.id || deleteTarget._id;
+      await deleteParty(String(pid));
+      setDeleteTarget(null);
+    } finally {
+      setDeleteLoading(false);
+    }
   };
+
+  if (initialDataLoading) {
+    return (
+      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+        <Loader />
+      </div>
+    );
+  }
 
   const initials = (name) => name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
@@ -106,9 +157,9 @@ export default function Parties() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 22 }}>
         {[
           { label: 'Total Parties', value: parties.length, color: '#1e40af' },
-          { label: 'Active Parties', value: parties.filter(p => ghausiaLots.some(l => l.partyId === p.id && ['Pending', 'Dispatched'].includes(l.status))).length, color: '#d97706' },
-          { label: 'Total Lots Assigned', value: ghausiaLots.filter(l => l.partyId).length, color: '#7c3aed' },
-          { label: 'Total Bill Value', value: `₨${ghausiaLots.reduce((s, l) => s + Number(l.billAmount || 0), 0).toLocaleString()}`, color: '#0284c7' },
+          { label: 'Active Parties', value: parties.filter(p => ghausiaLots.some(l => String(l.partyId) === String(p.id) && String(l.status).toLowerCase() !== 'completed')).length, color: '#d97706' },
+          { label: 'Total Lots Assigned', value: ghausiaLots.filter(l => String(l.partyId || '').trim()).length, color: '#7c3aed' },
+          // { label: 'Total Bill Value', value: `₨${ghausiaLots.reduce((s, l) => s + Number(l.billAmount || 0), 0).toLocaleString()}`, color: '#0284c7' },
         ].map(c => (
           <div key={c.label} className="stat-card">
             <div className="stat-label">{c.label}</div>
@@ -210,8 +261,8 @@ export default function Parties() {
       )}
 
       {modal === 'form' && (
-        <Modal title={editing ? 'Edit Party' : 'Add New Party'} onClose={() => { setModal(null); setEditing(null); }}>
-          <PartyForm initial={editing} onSave={handleSave} onClose={() => { setModal(null); setEditing(null); }} />
+        <Modal title={editing ? 'Edit Party' : 'Add New Party'} onClose={() => { if (!partySaving) { setModal(null); setEditing(null); } }}>
+          <PartyForm initial={editing} onSave={handleSave} onClose={() => { if (!partySaving) { setModal(null); setEditing(null); } }} saving={partySaving} />
         </Modal>
       )}
 
@@ -219,16 +270,16 @@ export default function Parties() {
         <Modal title={`Transaction History — ${transactionParty.name}`} onClose={() => setTransactionParty(null)}>
           <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
             {(() => {
-              const partyPayments = payments.filter(p => p.party === transactionParty.name);
-              const partyLots = ghausiaLots.filter(l => l.partyId === transactionParty.id);
+              const partyPayments = payments.filter(p => String(p.party || '').trim() === String(transactionParty.name || '').trim());
+              const partyLots = ghausiaLots.filter(l => String(l.partyId) === String(transactionParty.id));
               const transactions = [
-                ...partyPayments.map(p => ({ ...p, type: 'payment' })),
+                ...partyPayments.map(p => ({ ...p, rowKind: 'payment' })),
                 ...partyLots.map(l => {
                   const pe = partyEdits[l.id] || {};
                   return {
                     id: l.id,
                     date: l.allotDate,
-                    type: 'lot',
+                    rowKind: 'lot',
                     lotNo: l.lotNo,
                     designNo: l.designNo,
                     amount: pe.partyBillAmount !== undefined ? pe.partyBillAmount : l.billAmount,
@@ -252,24 +303,24 @@ export default function Parties() {
                     </tr>
                   </thead>
                   <tbody>
-                    {transactions.map((t, idx) => (
-                      <tr key={`${t.type}-${t.id}`} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                    {transactions.map((t) => (
+                      <tr key={`${t.rowKind}-${t.id}`} style={{ borderBottom: '1px solid #F3F4F6' }}>
                         <td style={{ padding: '8px 12px', fontSize: 13 }}>{t.date}</td>
                         <td style={{ padding: '8px 12px' }}>
                           <span style={{
-                            background: t.type === 'payment' ? '#F0FDF4' : '#EFF6FF',
-                            color: t.type === 'payment' ? '#166534' : '#1e40af',
-                            border: `1px solid ${t.type === 'payment' ? '#BBF7D0' : '#BFDBFE'}`,
+                            background: t.rowKind === 'payment' ? '#F0FDF4' : '#EFF6FF',
+                            color: t.rowKind === 'payment' ? '#166534' : '#1e40af',
+                            border: `1px solid ${t.rowKind === 'payment' ? '#BBF7D0' : '#BFDBFE'}`,
                             borderRadius: 12, padding: '2px 8px', fontSize: 11, fontWeight: 600,
                           }}>
-                            {t.type === 'payment' ? 'Payment' : 'Lot'}
+                            {t.rowKind === 'payment' ? 'Payment' : 'Lot'}
                           </span>
                         </td>
                         <td style={{ padding: '8px 12px', fontSize: 13 }}>
-                          {t.type === 'payment' ? (
+                          {t.rowKind === 'payment' ? (
                             <div>
                               <div style={{ fontWeight: 500 }}>{t.note || 'Payment'}</div>
-                              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.type} • {t.linkedLot || 'No lot'}</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.type || 'Paid'} • {t.linkedLot || 'No lot'}</div>
                             </div>
                           ) : (
                             <div>
@@ -278,8 +329,8 @@ export default function Parties() {
                             </div>
                           )}
                         </td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right', fontSize: 13, fontWeight: 600, color: t.type === 'payment' ? '#dc2626' : '#1e40af' }}>
-                          {t.type === 'payment' ? '-' : ''}₨{Number(t.amount || 0).toLocaleString()}
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontSize: 13, fontWeight: 600, color: t.rowKind === 'payment' ? '#dc2626' : '#1e40af' }}>
+                          {t.rowKind === 'payment' ? '-' : ''}₨{Number(t.amount || 0).toLocaleString()}
                         </td>
                       </tr>
                     ))}
@@ -296,6 +347,7 @@ export default function Parties() {
           message={`Delete party "${deleteTarget.name}"? This will not remove assigned lots.`}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
+          confirming={deleteLoading}
         />
       )}
     </div>

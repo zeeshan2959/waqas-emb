@@ -2,12 +2,13 @@ import React, { useState, useMemo } from 'react';
 import Swal from 'sweetalert2';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, StatusBadge, ActionBtn, SearchBar, EmptyState, ConfirmDialog } from '../components/UI';
+import Loader from '../components/Loader';
 
 const FABRICS = ['Lawn', 'Velvet', 'Cambric'];
 const COLOR_OPTIONS = Array.from({ length: 13 }, (_, i) => i);
 const STATUS_OPTIONS = ['pending', 'dispatched', 'received back', 'completed'];
 
-function LotForm({ initial, onSave, onClose, parties }) {
+function LotForm({ initial, onSave, onClose, parties, saving }) {
   const blank = {
     lotNumber: '', lotNo: '', designNo: '', description: '', itemType: 'Lawn', fabric: 'Lawn', customFabric: '',
     colors: 0, quantity: '', pieces: '', unit: 'pieces', rate: '', billAmount: '',
@@ -24,8 +25,8 @@ function LotForm({ initial, onSave, onClose, parties }) {
     itemType: FABRICS.includes(initial.itemType || initial.fabric) ? (initial.itemType || initial.fabric) : '__custom',
     fabric: FABRICS.includes(initial.itemType || initial.fabric) ? (initial.itemType || initial.fabric) : '__custom',
     customFabric: FABRICS.includes(initial.itemType || initial.fabric) ? '' : (initial.customFabric || initial.itemType || initial.fabric || ''),
-    quantity: initial.quantity ?? initial.pieces ?? '',
-    pieces: initial.pieces ?? initial.quantity ?? '',
+    // quantity: initial.quantity ?? initial.pieces ?? '',
+    pieces: initial.pieces ?? '',
     partyId: initial.partyId || (parties.find(p => p.name === (initial.partyName || initial.party))?.id) || '',
     partyName: (parties.find(p => p.id === initial.partyId)?.name) || initial.partyName || '',
   } : blank);
@@ -41,7 +42,7 @@ function LotForm({ initial, onSave, onClose, parties }) {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return;
     const finalType = form.itemType === '__custom' ? form.customFabric : form.itemType;
     const lotNumber = form.lotNumber || form.lotNo;
@@ -50,7 +51,7 @@ function LotForm({ initial, onSave, onClose, parties }) {
     const partyName = selectedParty?.name || form.partyName || '';
     const partyId = form.partyId || '';
 
-    onSave({
+    await onSave({
       ...form,
       fabric: finalType,
       itemType: finalType,
@@ -105,18 +106,23 @@ function LotForm({ initial, onSave, onClose, parties }) {
             {COLOR_OPTIONS.map(n => <option key={n} value={n}>{n} color{n !== 1 ? 's' : ''}</option>)}
           </select>
         </FormGroup>
-        {/* <FormGroup label="Total Amount (₨)">
-          <input className="form-input" type="number" min="0" value={form.totalAmount} onChange={e => set('totalAmount', e.target.value)} placeholder="0" />
-        </FormGroup> */}
+        <FormGroup label="Pieces">
+          <input className="form-input" type="number" min="0" value={form.pieces} onChange={e => set('pieces', e.target.value)} placeholder="0" />
+        </FormGroup>
         <FormGroup label="Allot Date">
           <input className="form-input" type="date" value={form.allotDate} onChange={e => set('allotDate', e.target.value)} />
         </FormGroup>
         <FormGroup label="Party">
-          <select className="form-select" value={form.partyId} onChange={e => {
-            const selectedParty = parties.find(p => p.id === e.target.value);
-            set('partyId', e.target.value);
-            set('partyName', selectedParty ? selectedParty.name : '');
-          }}>
+          <select
+            className="form-select"
+            value={form.partyId}
+            autoFocus={!initial}
+            onChange={e => {
+              const selectedParty = parties.find(p => p.id === e.target.value);
+              set('partyId', e.target.value);
+              set('partyName', selectedParty ? selectedParty.name : '');
+            }}
+          >
             <option value="">— Select Party —</option>
             {parties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
@@ -144,18 +150,23 @@ function LotForm({ initial, onSave, onClose, parties }) {
         )}
       </div>
       <div className="modal-footer" style={{ padding: '16px 0 0', borderTop: '1px solid var(--border)', marginTop: 8 }}>
-        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={handleSave}>Save Lot</button>
+        <button className="btn btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
+        <button className="btn btn-primary" disabled={saving} onClick={handleSave} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          {saving ? <><Loader /> Saving…</> : 'Save Lot'}
+        </button>
       </div>
     </>
   );
 }
 
 export default function GhausiaCollection() {
-  const { ghausiaLots, addLot, updateLot, deleteLot, parties, getPartyName, payments, addPayment, deletePayment, updatePartyEdit } = useApp();
+  const { ghausiaLots, addLot, updateLot, deleteLot, parties, getPartyName, payments, addPayment, deletePayment, updatePartyEdit, initialDataLoading } = useApp();
   const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [lotSaving, setLotSaving] = useState(false);
+  const [paymentSaving, setPaymentSaving] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [payModal, setPayModal] = useState(false);
@@ -205,14 +216,24 @@ export default function GhausiaCollection() {
   const openAdd = () => { setEditing(null); setModal('form'); };
 
   const handleSave = async (form) => {
-    if (editing) await updateLot(editing.id, form);
-    else await addLot(form);
-    setModal(null); setEditing(null);
+    setLotSaving(true);
+    try {
+      if (editing) await updateLot(editing.id, form);
+      else await addLot(form);
+      setModal(null); setEditing(null);
+    } finally {
+      setLotSaving(false);
+    }
   };
 
   const handleDelete = async () => {
-    await deleteLot(deleteTarget.id);
-    setDeleteTarget(null);
+    setDeleteLoading(true);
+    try {
+      await deleteLot(deleteTarget.id);
+      setDeleteTarget(null);
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   const handlePartyChange = async (lotId, partyId) => {
@@ -243,6 +264,7 @@ export default function GhausiaCollection() {
 
   const handleAddPayment = async () => {
     if (!validatePayForm()) return;
+    setPaymentSaving(true);
     try {
       await addPayment({
         type: payForm.type,
@@ -257,6 +279,8 @@ export default function GhausiaCollection() {
       setPayForm({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
     } catch (err) {
       Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to save payment. Please try again.' });
+    } finally {
+      setPaymentSaving(false);
     }
   };
 
@@ -274,6 +298,14 @@ export default function GhausiaCollection() {
       await deletePayment(id);
     }
   };
+
+  if (initialDataLoading) {
+    return (
+      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+        <Loader />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -388,7 +420,7 @@ export default function GhausiaCollection() {
               <tr>
                 <th>Lot No</th><th>Design No</th><th>Description</th><th>Item Type</th>
                 <th>Colors</th>
-                {/* <th>Quantity</th> */}
+                <th>Pieces</th>
                 <th>Allot Date</th><th>Party Name</th>
                 <th>Status</th><th style={{ textAlign: 'right' }}>Bill Amount</th><th>Actions</th>
               </tr>
@@ -403,7 +435,7 @@ export default function GhausiaCollection() {
                   <td>{l.description}</td>
                   <td><span style={{ background: '#F0F9FF', color: '#0369a1', border: '1px solid #BAE6FD', borderRadius: 6, padding: '2px 8px', fontSize: 12 }}>{l.itemType || l.fabric}</span></td>
                   <td>{l.colors}</td>
-                  {/* <td>{l.quantity}</td> */}
+                  <td>{l.pieces}</td>
                   <td>{l.allotDate}</td>
                   <td>
                     <select
@@ -429,11 +461,11 @@ export default function GhausiaCollection() {
                         <option key={s} value={s}>{s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>
                       ))}
                     </select>
-                    <div style={{ marginTop: 4 }}>
+                    {/* <div style={{ marginTop: 4 }}>
                       <StatusBadge status={statusMeta[l.status]?.label || l.status} />
-                    </div>
-                    {l.dispatchDate && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>Dispatch: {l.dispatchDate}</div>}
-                    {l.receivedBackDate && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 1 }}>Received: {l.receivedBackDate}</div>}
+                    </div> */}
+                    {l.dispatchDate && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 3, fontWeight:'500' }}>Dispatch: {l.dispatchDate}</div>}
+                    {l.receivedBackDate && <div style={{ fontSize: 12, color: 'green', marginTop: 1, fontWeight:'500' }}>Received: {l.receivedBackDate}</div>}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: '#1e40af' }}>
                     ₨{Number(l.billAmount || 0).toLocaleString()}
@@ -453,18 +485,20 @@ export default function GhausiaCollection() {
 
       {/* Lot Form Modal */}
       {modal === 'form' && (
-        <Modal title={editing ? 'Edit Lot' : 'Add New Lot'} onClose={() => { setModal(null); setEditing(null); }}>
-          <LotForm initial={editing} onSave={handleSave} onClose={() => { setModal(null); setEditing(null); }} parties={parties} />
+        <Modal title={editing ? 'Edit Lot' : 'Add New Lot'} onClose={() => { if (!lotSaving) { setModal(null); setEditing(null); } }}>
+          <LotForm initial={editing} onSave={handleSave} onClose={() => { if (!lotSaving) { setModal(null); setEditing(null); } }} parties={parties} saving={lotSaving} />
         </Modal>
       )}
 
       {/* Payment Modal */}
       {payModal && (
-        <Modal title="Record Payment" onClose={() => { setPayModal(false); setPayErrors({}); }}
+        <Modal title="Record Payment" onClose={() => { if (!paymentSaving) { setPayModal(false); setPayErrors({}); } }}
           footer={
             <>
-              <button className="btn btn-ghost" onClick={() => { setPayModal(false); setPayErrors({}); }}>Cancel</button>
-              <button className="btn btn-success" onClick={handleAddPayment}>Save Payment</button>
+              <button className="btn btn-ghost" onClick={() => { setPayModal(false); setPayErrors({}); }} disabled={paymentSaving}>Cancel</button>
+              <button className="btn btn-success" onClick={handleAddPayment} disabled={paymentSaving} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                {paymentSaving ? <><Loader /> Saving…</> : 'Save Payment'}
+              </button>
             </>
           }
         >
@@ -540,6 +574,7 @@ export default function GhausiaCollection() {
           message={`Delete lot ${deleteTarget.lotNumber || deleteTarget.lotNo} / ${deleteTarget.designNo}? This action cannot be undone.`}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
+          confirming={deleteLoading}
         />
       )}
     </div>

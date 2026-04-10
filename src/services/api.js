@@ -18,7 +18,15 @@ class ApiService {
     try {
       const response = await fetch(url, config);
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        let detail = '';
+        try {
+          const errBody = await response.json();
+          detail = errBody.message || errBody.error || (typeof errBody === 'string' ? errBody : '');
+          if (errBody.error && errBody.error !== detail) detail = `${detail} ${errBody.error}`.trim();
+        } catch {
+          /* ignore non-JSON error bodies */
+        }
+        throw new Error(detail ? `HTTP ${response.status}: ${detail}` : `HTTP error! status: ${response.status}`);
       }
       return await response.json();
     } catch (error) {

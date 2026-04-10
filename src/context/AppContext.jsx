@@ -69,6 +69,7 @@ export function AppProvider({ children }) {
   const [ghausiaLots, setGhausiaLots] = useState(INITIAL_GHAUSIA);
   const [partyEdits, setPartyEdits] = useState(INITIAL_PARTY_EDITS);
   const [payments, setPayments] = useState(INITIAL_PAYMENTS);
+  const [initialDataLoading, setInitialDataLoading] = useState(true);
 
   useEffect(() => {
     async function loadAppData() {
@@ -94,12 +95,18 @@ export function AppProvider({ children }) {
 
         if (Array.isArray(remotePartyEdits)) {
           setPartyEdits(remotePartyEdits.reduce((acc, item) => {
-            acc[item.lotId] = item;
+            acc[item.lotId] = {
+              ...item,
+              completeDate: item.completeDate ? normalizeDateString(item.completeDate) : '',
+              allotDate: item.allotDate ? normalizeDateString(item.allotDate) : '',
+            };
             return acc;
           }, {}));
         }
       } catch (error) {
         console.error('Unable to load persisted data from JSON Server', error);
+      } finally {
+        setInitialDataLoading(false);
       }
     }
 
@@ -143,8 +150,13 @@ export function AppProvider({ children }) {
   const updatePartyEdit = async (lotId, data) => {
     try {
       const result = await apiService.upsertPartyEditByLotId(lotId, data);
-      setPartyEdits(prev => ({ ...prev, [lotId]: result }));
-      return result;
+      const normalizedEdit = {
+        ...result,
+        completeDate: result.completeDate ? normalizeDateString(result.completeDate) : '',
+        allotDate: result.allotDate ? normalizeDateString(result.allotDate) : '',
+      };
+      setPartyEdits(prev => ({ ...prev, [lotId]: normalizedEdit }));
+      return normalizedEdit;
     } catch (error) {
       console.error('Error updating party edit:', error);
       const fallback = { ...data, lotId };
@@ -176,6 +188,7 @@ export function AppProvider({ children }) {
       partyEdits, updatePartyEdit,
       payments, addPayment, deletePayment,
       getPartyById, getPartyName,
+      initialDataLoading,
     }}>
       {children}
     </AppContext.Provider>
