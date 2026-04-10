@@ -1,5 +1,5 @@
 // API utility for Express.js Backend
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = 'https://waqas-emb-backend-1.onrender.com/api';
 
 class ApiService {
   constructor() {
