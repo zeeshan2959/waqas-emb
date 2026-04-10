@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, SearchBar, EmptyState, ConfirmDialog } from '../components/UI';
+import Loader from '../components/Loader';
 
 function toPartyFormFields(initial) {
   if (!initial) return { name: '', phone: '', address: '' };
@@ -11,7 +12,7 @@ function toPartyFormFields(initial) {
   };
 }
 
-function PartyForm({ initial, onSave, onClose }) {
+function PartyForm({ initial, onSave, onClose, saving }) {
   const [form, setForm] = useState(() => toPartyFormFields(initial));
   const [errors, setErrors] = useState({});
 
@@ -39,18 +40,22 @@ function PartyForm({ initial, onSave, onClose }) {
         <textarea className="form-textarea" rows={3} value={form.address} onChange={e => set('address', e.target.value)} placeholder="Full address..." style={{ resize: 'vertical' }} />
       </FormGroup>
       <div className="modal-footer" style={{ padding: '16px 0 0', borderTop: '1px solid var(--border)', marginTop: 8 }}>
-        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={() => { if (validate()) onSave(form); }}>Save Party</button>
+        <button className="btn btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
+        <button className="btn btn-primary" disabled={saving} onClick={async () => { if (validate()) await onSave(form); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          {saving ? <><Loader /> Saving…</> : 'Save Party'}
+        </button>
       </div>
     </>
   );
 }
 
 export default function Parties() {
-  const { parties, addParty, updateParty, deleteParty, ghausiaLots, getPartyName, partyEdits, payments } = useApp();
+  const { parties, addParty, updateParty, deleteParty, ghausiaLots, getPartyName, partyEdits, payments, initialDataLoading } = useApp();
   const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [partySaving, setPartySaving] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [transactionParty, setTransactionParty] = useState(null);
 
@@ -88,25 +93,43 @@ export default function Parties() {
   };
 
   const handleSave = async (formData) => {
-    const payload = {
-      name: formData.name.trim(),
-      phone: (formData.phone || '').trim(),
-      address: (formData.address || '').trim(),
-    };
-    if (editing) {
-      const pid = editing.id || editing._id;
-      await updateParty(String(pid), payload);
-    } else {
-      await addParty(payload);
+    setPartySaving(true);
+    try {
+      const payload = {
+        name: formData.name.trim(),
+        phone: (formData.phone || '').trim(),
+        address: (formData.address || '').trim(),
+      };
+      if (editing) {
+        const pid = editing.id || editing._id;
+        await updateParty(String(pid), payload);
+      } else {
+        await addParty(payload);
+      }
+      setModal(null); setEditing(null);
+    } finally {
+      setPartySaving(false);
     }
-    setModal(null); setEditing(null);
   };
 
   const handleDelete = async () => {
-    const pid = deleteTarget.id || deleteTarget._id;
-    await deleteParty(String(pid));
-    setDeleteTarget(null);
+    setDeleteLoading(true);
+    try {
+      const pid = deleteTarget.id || deleteTarget._id;
+      await deleteParty(String(pid));
+      setDeleteTarget(null);
+    } finally {
+      setDeleteLoading(false);
+    }
   };
+
+  if (initialDataLoading) {
+    return (
+      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+        <Loader />
+      </div>
+    );
+  }
 
   const initials = (name) => name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
@@ -238,8 +261,8 @@ export default function Parties() {
       )}
 
       {modal === 'form' && (
-        <Modal title={editing ? 'Edit Party' : 'Add New Party'} onClose={() => { setModal(null); setEditing(null); }}>
-          <PartyForm initial={editing} onSave={handleSave} onClose={() => { setModal(null); setEditing(null); }} />
+        <Modal title={editing ? 'Edit Party' : 'Add New Party'} onClose={() => { if (!partySaving) { setModal(null); setEditing(null); } }}>
+          <PartyForm initial={editing} onSave={handleSave} onClose={() => { if (!partySaving) { setModal(null); setEditing(null); } }} saving={partySaving} />
         </Modal>
       )}
 
@@ -324,6 +347,7 @@ export default function Parties() {
           message={`Delete party "${deleteTarget.name}"? This will not remove assigned lots.`}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
+          confirming={deleteLoading}
         />
       )}
     </div>

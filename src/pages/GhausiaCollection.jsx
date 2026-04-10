@@ -2,12 +2,13 @@ import React, { useState, useMemo } from 'react';
 import Swal from 'sweetalert2';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, StatusBadge, ActionBtn, SearchBar, EmptyState, ConfirmDialog } from '../components/UI';
+import Loader from '../components/Loader';
 
 const FABRICS = ['Lawn', 'Velvet', 'Cambric'];
 const COLOR_OPTIONS = Array.from({ length: 13 }, (_, i) => i);
 const STATUS_OPTIONS = ['pending', 'dispatched', 'received back', 'completed'];
 
-function LotForm({ initial, onSave, onClose, parties }) {
+function LotForm({ initial, onSave, onClose, parties, saving }) {
   const blank = {
     lotNumber: '', lotNo: '', designNo: '', description: '', itemType: 'Lawn', fabric: 'Lawn', customFabric: '',
     colors: 0, quantity: '', pieces: '', unit: 'pieces', rate: '', billAmount: '',
@@ -41,7 +42,7 @@ function LotForm({ initial, onSave, onClose, parties }) {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return;
     const finalType = form.itemType === '__custom' ? form.customFabric : form.itemType;
     const lotNumber = form.lotNumber || form.lotNo;
@@ -50,7 +51,7 @@ function LotForm({ initial, onSave, onClose, parties }) {
     const partyName = selectedParty?.name || form.partyName || '';
     const partyId = form.partyId || '';
 
-    onSave({
+    await onSave({
       ...form,
       fabric: finalType,
       itemType: finalType,
@@ -149,18 +150,23 @@ function LotForm({ initial, onSave, onClose, parties }) {
         )}
       </div>
       <div className="modal-footer" style={{ padding: '16px 0 0', borderTop: '1px solid var(--border)', marginTop: 8 }}>
-        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={handleSave}>Save Lot</button>
+        <button className="btn btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
+        <button className="btn btn-primary" disabled={saving} onClick={handleSave} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          {saving ? <><Loader /> Saving…</> : 'Save Lot'}
+        </button>
       </div>
     </>
   );
 }
 
 export default function GhausiaCollection() {
-  const { ghausiaLots, addLot, updateLot, deleteLot, parties, getPartyName, payments, addPayment, deletePayment, updatePartyEdit } = useApp();
+  const { ghausiaLots, addLot, updateLot, deleteLot, parties, getPartyName, payments, addPayment, deletePayment, updatePartyEdit, initialDataLoading } = useApp();
   const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [lotSaving, setLotSaving] = useState(false);
+  const [paymentSaving, setPaymentSaving] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [payModal, setPayModal] = useState(false);
@@ -210,14 +216,24 @@ export default function GhausiaCollection() {
   const openAdd = () => { setEditing(null); setModal('form'); };
 
   const handleSave = async (form) => {
-    if (editing) await updateLot(editing.id, form);
-    else await addLot(form);
-    setModal(null); setEditing(null);
+    setLotSaving(true);
+    try {
+      if (editing) await updateLot(editing.id, form);
+      else await addLot(form);
+      setModal(null); setEditing(null);
+    } finally {
+      setLotSaving(false);
+    }
   };
 
   const handleDelete = async () => {
-    await deleteLot(deleteTarget.id);
-    setDeleteTarget(null);
+    setDeleteLoading(true);
+    try {
+      await deleteLot(deleteTarget.id);
+      setDeleteTarget(null);
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   const handlePartyChange = async (lotId, partyId) => {
@@ -248,6 +264,7 @@ export default function GhausiaCollection() {
 
   const handleAddPayment = async () => {
     if (!validatePayForm()) return;
+    setPaymentSaving(true);
     try {
       await addPayment({
         type: payForm.type,
@@ -262,6 +279,8 @@ export default function GhausiaCollection() {
       setPayForm({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
     } catch (err) {
       Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to save payment. Please try again.' });
+    } finally {
+      setPaymentSaving(false);
     }
   };
 
@@ -279,6 +298,14 @@ export default function GhausiaCollection() {
       await deletePayment(id);
     }
   };
+
+  if (initialDataLoading) {
+    return (
+      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+        <Loader />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -458,18 +485,20 @@ export default function GhausiaCollection() {
 
       {/* Lot Form Modal */}
       {modal === 'form' && (
-        <Modal title={editing ? 'Edit Lot' : 'Add New Lot'} onClose={() => { setModal(null); setEditing(null); }}>
-          <LotForm initial={editing} onSave={handleSave} onClose={() => { setModal(null); setEditing(null); }} parties={parties} />
+        <Modal title={editing ? 'Edit Lot' : 'Add New Lot'} onClose={() => { if (!lotSaving) { setModal(null); setEditing(null); } }}>
+          <LotForm initial={editing} onSave={handleSave} onClose={() => { if (!lotSaving) { setModal(null); setEditing(null); } }} parties={parties} saving={lotSaving} />
         </Modal>
       )}
 
       {/* Payment Modal */}
       {payModal && (
-        <Modal title="Record Payment" onClose={() => { setPayModal(false); setPayErrors({}); }}
+        <Modal title="Record Payment" onClose={() => { if (!paymentSaving) { setPayModal(false); setPayErrors({}); } }}
           footer={
             <>
-              <button className="btn btn-ghost" onClick={() => { setPayModal(false); setPayErrors({}); }}>Cancel</button>
-              <button className="btn btn-success" onClick={handleAddPayment}>Save Payment</button>
+              <button className="btn btn-ghost" onClick={() => { setPayModal(false); setPayErrors({}); }} disabled={paymentSaving}>Cancel</button>
+              <button className="btn btn-success" onClick={handleAddPayment} disabled={paymentSaving} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                {paymentSaving ? <><Loader /> Saving…</> : 'Save Payment'}
+              </button>
             </>
           }
         >
@@ -545,6 +574,7 @@ export default function GhausiaCollection() {
           message={`Delete lot ${deleteTarget.lotNumber || deleteTarget.lotNo} / ${deleteTarget.designNo}? This action cannot be undone.`}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
+          confirming={deleteLoading}
         />
       )}
     </div>

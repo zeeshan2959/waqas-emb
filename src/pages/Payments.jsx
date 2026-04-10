@@ -2,13 +2,15 @@ import React, { useState, useMemo } from 'react';
 import Swal from 'sweetalert2';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, EmptyState } from '../components/UI';
+import Loader from '../components/Loader';
 
 export default function Payments() {
-  const { payments, addPayment, deletePayment, ghausiaLots, parties } = useApp();
+  const { payments, addPayment, deletePayment, ghausiaLots, parties, initialDataLoading } = useApp();
   const [modal, setModal] = useState(false);
   const [typeFilter, setTypeFilter] = useState('All');
   const [form, setForm] = useState({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
   const [errors, setErrors] = useState({});
+  const [paymentSaving, setPaymentSaving] = useState(false);
 
   const filtered = useMemo(() =>
     payments.filter(p => typeFilter === 'All' || p.type === typeFilter),
@@ -30,6 +32,7 @@ export default function Payments() {
 
   const handleSave = async () => {
     if (!validateForm()) return;
+    setPaymentSaving(true);
     try {
       await addPayment(form);
       setForm({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
@@ -37,6 +40,8 @@ export default function Payments() {
       setModal(false);
     } catch (err) {
       Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to save payment. Please try again.' });
+    } finally {
+      setPaymentSaving(false);
     }
   };
 
@@ -60,6 +65,14 @@ export default function Payments() {
     setErrors({});
     setForm({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
   };
+
+  if (initialDataLoading) {
+    return (
+      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+        <Loader />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -191,11 +204,13 @@ export default function Payments() {
       {modal && (
         <Modal
           title="Record New Payment"
-          onClose={handleClose}
+          onClose={() => { if (!paymentSaving) handleClose(); }}
           footer={
             <>
-              <button className="btn btn-ghost" onClick={handleClose}>Cancel</button>
-              <button className="btn btn-success" onClick={handleSave}>Save Payment</button>
+              <button className="btn btn-ghost" onClick={handleClose} disabled={paymentSaving}>Cancel</button>
+              <button className="btn btn-success" onClick={handleSave} disabled={paymentSaving} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                {paymentSaving ? <><Loader /> Saving…</> : 'Save Payment'}
+              </button>
             </>
           }
         >

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, StatusBadge, SearchBar, EmptyState } from '../components/UI';
+import Loader from '../components/Loader';
 
 // From the party's perspective: dispatched = In Progress, received back = Completed
 const toLedgerStatus = (status) => {
@@ -14,12 +15,13 @@ const toTitleCase = (s) =>
   String(s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
 export default function PartyLedger() {
-  const { ghausiaLots, updateLot, partyEdits, updatePartyEdit, parties } = useApp();
+  const { ghausiaLots, updateLot, partyEdits, updatePartyEdit, parties, initialDataLoading } = useApp();
   const [search, setSearch] = useState('');
   const [partyFilter, setPartyFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [ledgerSaving, setLedgerSaving] = useState(false);
 
   // Only lots assigned to a party
   const assignedLots = useMemo(() =>
@@ -101,51 +103,56 @@ export default function PartyLedger() {
     const lot = ghausiaLots.find(l => l.id === editingId);
     if (!lot) return;
 
-    const partyChanged = editForm.partyId && editForm.partyId !== lot.partyId;
+    setLedgerSaving(true);
+    try {
+      const partyChanged = editForm.partyId && editForm.partyId !== lot.partyId;
 
-    if (editForm.status === 'Completed') {
-      await updatePartyEdit(editingId, {
-        completeDate: editForm.completeDate || new Date().toISOString().slice(0, 10),
-        partyBillAmount: Number(editForm.billAmount) || 0,
-        receipt: editForm.receipt,
-        notes: editForm.notes,
-        overrideStatus: 'Completed',
-      });
-      const lotUpdates = {
-        status: 'received back',
-        receivedBackDate: editForm.completeDate || new Date().toISOString().slice(0, 10),
-      };
-      if (partyChanged) {
-        const sel = parties.find(p => p.id === editForm.partyId);
-        lotUpdates.partyId = editForm.partyId;
-        lotUpdates.partyName = sel?.name || editForm.partyName;
-      }
-      await updateLot(editingId, lotUpdates);
-    } else {
-      await updatePartyEdit(editingId, {
-        completeDate: editForm.completeDate || null,
-        partyBillAmount: Number(editForm.billAmount) || 0,
-        receipt: editForm.receipt,
-        notes: editForm.notes,
-        overrideStatus: 'In Progress',
-      });
-      const lotUpdates = {};
-      const lowerStatus = (lot.status || '').toLowerCase();
-      if (lowerStatus !== 'dispatched') {
-        lotUpdates.status = 'dispatched';
-        lotUpdates.dispatchDate = lot.dispatchDate || new Date().toISOString().slice(0, 10);
-      }
-      if (partyChanged) {
-        const sel = parties.find(p => p.id === editForm.partyId);
-        lotUpdates.partyId = editForm.partyId;
-        lotUpdates.partyName = sel?.name || editForm.partyName;
-      }
-      if (Object.keys(lotUpdates).length > 0) {
+      if (editForm.status === 'Completed') {
+        await updatePartyEdit(editingId, {
+          completeDate: editForm.completeDate || new Date().toISOString().slice(0, 10),
+          partyBillAmount: Number(editForm.billAmount) || 0,
+          receipt: editForm.receipt,
+          notes: editForm.notes,
+          overrideStatus: 'Completed',
+        });
+        const lotUpdates = {
+          status: 'received back',
+          receivedBackDate: editForm.completeDate || new Date().toISOString().slice(0, 10),
+        };
+        if (partyChanged) {
+          const sel = parties.find(p => p.id === editForm.partyId);
+          lotUpdates.partyId = editForm.partyId;
+          lotUpdates.partyName = sel?.name || editForm.partyName;
+        }
         await updateLot(editingId, lotUpdates);
+      } else {
+        await updatePartyEdit(editingId, {
+          completeDate: editForm.completeDate || null,
+          partyBillAmount: Number(editForm.billAmount) || 0,
+          receipt: editForm.receipt,
+          notes: editForm.notes,
+          overrideStatus: 'In Progress',
+        });
+        const lotUpdates = {};
+        const lowerStatus = (lot.status || '').toLowerCase();
+        if (lowerStatus !== 'dispatched') {
+          lotUpdates.status = 'dispatched';
+          lotUpdates.dispatchDate = lot.dispatchDate || new Date().toISOString().slice(0, 10);
+        }
+        if (partyChanged) {
+          const sel = parties.find(p => p.id === editForm.partyId);
+          lotUpdates.partyId = editForm.partyId;
+          lotUpdates.partyName = sel?.name || editForm.partyName;
+        }
+        if (Object.keys(lotUpdates).length > 0) {
+          await updateLot(editingId, lotUpdates);
+        }
       }
-    }
 
-    setEditingId(null);
+      setEditingId(null);
+    } finally {
+      setLedgerSaving(false);
+    }
   };
   const totalsValues = filtered.reduce(
     (acc, item) => {
@@ -183,6 +190,14 @@ export default function PartyLedger() {
   };
 
   const editingLot = ghausiaLots.find(l => l.id === editingId);
+
+  if (initialDataLoading) {
+    return (
+      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+        <Loader />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -313,11 +328,13 @@ export default function PartyLedger() {
       {editingId && editingLot && (
         <Modal
           title={`Edit — ${editingLot.lotNo || editingLot.lotNumber} / ${editingLot.designNo}`}
-          onClose={() => setEditingId(null)}
+          onClose={() => { if (!ledgerSaving) setEditingId(null); }}
           footer={
             <>
-              <button className="btn btn-ghost" onClick={() => setEditingId(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSave}>Save Changes</button>
+              <button className="btn btn-ghost" onClick={() => setEditingId(null)} disabled={ledgerSaving}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSave} disabled={ledgerSaving} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                {ledgerSaving ? <><Loader /> Saving…</> : 'Save Changes'}
+              </button>
             </>
           }
         >
