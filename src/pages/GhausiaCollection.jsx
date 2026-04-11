@@ -347,7 +347,7 @@ export default function GhausiaCollection() {
           {payments.length === 0 ? (
             <p style={{ padding: 16, color: 'var(--text-muted)', fontSize: 13 }}>No payments yet.</p>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div style={{ overflowX: 'auto', marginBottom:10 }} className='table-wrapper'>
               <table>
                 <thead>
                   <tr>
@@ -389,7 +389,7 @@ export default function GhausiaCollection() {
           )}
         </div>
         {billable.length > 0 && (
-          <div style={{ margin: '0 16px 16px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: 14 }}>
+          <div style={{ margin: '0', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: 14 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#92600A', marginBottom: 10 }}>
               Billable to Owner — {billable.length} lots · Total: ₨{billableTotal.toLocaleString()}
             </div>

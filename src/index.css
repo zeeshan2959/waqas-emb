@@ -834,13 +834,79 @@ tbody tr:last-child td {
   }
 } */
 
-@keyframes spin { to { transform: rotate(360deg); } }
-@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.75); } }
-@keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
-@keyframes ripple { 0% { transform: scale(0); opacity: 1; } 100% { transform: scale(2.5); opacity: 0; } }
-@keyframes bar { 0%,100% { transform: scaleY(0.4); } 50% { transform: scaleY(1); } }
-@keyframes orbit { to { transform: rotate(360deg); } }
-@keyframes fadeBar { 0%,100% { opacity: 0.15; } 50% { opacity: 1; } }
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.4;
+    transform: scale(0.75);
+  }
+}
+
+@keyframes bounce {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+@keyframes bar {
+
+  0%,
+  100% {
+    transform: scaleY(0.4);
+  }
+
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeBar {
+
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
 
 .loader-grid {
   display: grid;
@@ -861,8 +927,14 @@ tbody tr:last-child td {
   cursor: pointer;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-.loader-card:hover { border-color: var(--color-border-secondary); }
-.loader-card.active { border-color: var(--color-border-primary); }
+
+.loader-card:hover {
+  border-color: var(--color-border-secondary);
+}
+
+.loader-card.active {
+  border-color: var(--color-border-primary);
+}
 
 .loader-label {
   font-size: 12px;
@@ -873,7 +945,8 @@ tbody tr:last-child td {
 
 /* 1. Ring */
 .ring {
-  width: 36px; height: 36px;
+  width: 36px;
+  height: 36px;
   border: 2.5px solid var(--color-border-tertiary);
   border-top-color: #7F77DD;
   border-radius: 50%;
@@ -881,52 +954,152 @@ tbody tr:last-child td {
 }
 
 /* 2. Dots */
-.dots { display: flex; gap: 7px; align-items: center; height: 36px; }
+.dots {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  height: 36px;
+}
+
 .dot {
-  width: 9px; height: 9px; border-radius: 50%; background: #1D9E75;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #1D9E75;
   animation: pulse 1.2s ease-in-out infinite;
 }
-.dot:nth-child(2) { animation-delay: 0.2s; }
-.dot:nth-child(3) { animation-delay: 0.4s; }
+
+.dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
 
 /* 3. Bounce */
-.bouncers { display: flex; gap: 7px; align-items: flex-end; height: 36px; }
+.bouncers {
+  display: flex;
+  gap: 7px;
+  align-items: flex-end;
+  height: 36px;
+}
+
 .bouncer {
-  width: 9px; height: 9px; border-radius: 50%; background: #D85A30;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #D85A30;
   animation: bounce 0.9s ease-in-out infinite;
 }
-.bouncer:nth-child(2) { animation-delay: 0.15s; }
-.bouncer:nth-child(3) { animation-delay: 0.3s; }
+
+.bouncer:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.bouncer:nth-child(3) {
+  animation-delay: 0.3s;
+}
 
 /* 4. Ripple */
-.ripple-wrap { position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; }
+.ripple-wrap {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .ripple-ring {
   position: absolute;
-  width: 36px; height: 36px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: 2px solid #378ADD;
   animation: ripple 1.6s ease-out infinite;
 }
-.ripple-ring:nth-child(2) { animation-delay: 0.8s; }
-.ripple-dot { width: 8px; height: 8px; border-radius: 50%; background: #378ADD; }
+
+.ripple-ring:nth-child(2) {
+  animation-delay: 0.8s;
+}
+
+.ripple-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #378ADD;
+}
 
 /* 5. Bars */
-.bars { display: flex; gap: 4px; align-items: center; height: 36px; }
+.bars {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  height: 36px;
+}
+
 .bar {
-  width: 5px; height: 22px; border-radius: 3px; background: #D4537E;
+  width: 5px;
+  height: 22px;
+  border-radius: 3px;
+  background: #D4537E;
   transform-origin: bottom;
   animation: bar 1s ease-in-out infinite;
 }
-.bar:nth-child(2) { animation-delay: 0.1s; height: 30px; }
-.bar:nth-child(3) { animation-delay: 0.2s; }
-.bar:nth-child(4) { animation-delay: 0.3s; height: 30px; }
-.bar:nth-child(5) { animation-delay: 0.4s; }
+
+.bar:nth-child(2) {
+  animation-delay: 0.1s;
+  height: 30px;
+}
+
+.bar:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+.bar:nth-child(4) {
+  animation-delay: 0.3s;
+  height: 30px;
+}
+
+.bar:nth-child(5) {
+  animation-delay: 0.4s;
+}
 
 /* 6. Orbit */
-.orbit-wrap { width: 36px; height: 36px; position: relative; }
-.orbit-center { position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; border-radius: 50%; background: #888780; transform: translate(-50%, -50%); }
-.orbit-ring { position: absolute; inset: 0; animation: orbit 1s linear infinite; }
-.orbit-ball { position: absolute; top: 0; left: 50%; width: 8px; height: 8px; border-radius: 50%; background: #534AB7; transform: translateX(-50%); }
+.orbit-wrap {
+  width: 36px;
+  height: 36px;
+  position: relative;
+}
+
+.orbit-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #888780;
+  transform: translate(-50%, -50%);
+}
+
+.orbit-ring {
+  position: absolute;
+  inset: 0;
+  animation: orbit 1s linear infinite;
+}
+
+.orbit-ball {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #534AB7;
+  transform: translateX(-50%);
+}
 
 /* Preview panel */
 .preview {
@@ -941,6 +1114,7 @@ tbody tr:last-child td {
   min-height: 140px;
   margin-top: 1.5rem;
 }
+
 .preview-label {
   font-size: 13px;
   color: var(--color-text-secondary);
@@ -959,3 +1133,36 @@ tbody tr:last-child td {
   white-space: pre;
   overflow-x: auto;
 }
+
+
+
+/* =============================  start Party ledger page =============================================== */
+.pl-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+@media screen and (max-width: 768px) {
+  .pl-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 22px;
+  }
+}
+
+/* =============================  end Party ledger page =============================================== */
+
+/* =============================  start Table adjustments =============================================== */
+.table-wrapper {
+  width: calc(100vw - 290px);
+}
+@media screen and (max-width: 768px) {
+  .table-wrapper {
+    width: calc(100vw - 40px);
+  }
+}
+
+
+/* =============================  end Table adjustments =============================================== */
