@@ -33,7 +33,7 @@ export default function Dashboard() {
   const recentLots = [...ghausiaLots].reverse().slice(0, 6);
 
   const partyStats = parties.map(p => {
-    const lots = ghausiaLots.filter(l => l.partyId === p.id);
+    const lots = ghausiaLots.filter(l => String(l.partyId ?? '') === String(p.id ?? ''));
     return {
       name: p.name,
       total: lots.length,
@@ -146,7 +146,7 @@ export default function Dashboard() {
                   {billable.map(l => (
                     <tr key={l.id}>
                       <td><span style={{ fontWeight: 600 }}>{l.lotNo || l.lotNumber}</span> / {l.designNo}</td>
-                      <td style={{ color: 'var(--text-secondary)' }}>{getPartyName(l.partyId) || l.partyName}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{l.partyId}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600, color: '#dc2626' }}>
                         ₨{Number(l.billAmount).toLocaleString()}
                       </td>
@@ -159,9 +159,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 18, marginBottom: 24 }}>
         {/* Party Performance */}
-        <div className="card">
+        {/* <div className="card">
           <div className="card-header"><span className="card-title">Party Performance</span></div>
           <div className="card-body">
             {partyStats.length === 0 ? (
@@ -182,7 +182,7 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-        </div>
+        </div> */}
 
         {/* Recent Lots */}
         <div className="card">
@@ -202,7 +202,7 @@ export default function Dashboard() {
                   <tr key={l.id}>
                     <td style={{ fontWeight: 600 }}>{l.lotNo || l.lotNumber}</td>
                     <td>{l.designNo}</td>
-                    <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{getPartyName(l.partyId) || l.partyName}</td>
+                    <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{l.partyId}</td>
                     <td><StatusBadge status={toTitleCase(l.status)} /></td>
                   </tr>
                 ))}

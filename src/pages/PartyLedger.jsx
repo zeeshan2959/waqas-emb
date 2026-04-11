@@ -22,12 +22,15 @@ export default function PartyLedger() {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [ledgerSaving, setLedgerSaving] = useState(false);
+  const [ledgerFormErrors, setLedgerFormErrors] = useState({});
 
   // Only lots assigned to a party
   const assignedLots = useMemo(() =>
-    ghausiaLots.filter(l => l.partyId || l.partyName),
-  [ghausiaLots]
-);
+    ghausiaLots.filter(l => String(l.partyId || '').trim() || String(l.partyName || '').trim()),
+    [ghausiaLots]
+  );
+
+  const samePartyId = (a, b) => String(a ?? '').trim() === String(b ?? '').trim();
 
   const formatYmd = (value) => {
     if (!value) return '';
@@ -35,7 +38,7 @@ export default function PartyLedger() {
     if (Number.isNaN(d.getTime())) return '';
     return d.toISOString().slice(0, 10);
   };
-  
+
 
   /** Party ledger completion date: party edit override, else Ghausia lot received-back date (syncs to PartyLedger.completeDate on server). */
   const getDisplayCompleteDate = (l, pe) => {
@@ -52,20 +55,18 @@ export default function PartyLedger() {
   };
 
   const getPartyNameLocal = (partyId, fallback) =>
-    parties.find(p => p.id === partyId)?.name || fallback || '—';
+    parties.find(p => samePartyId(p.id, partyId))?.name || fallback || '—';
 
   // Bill amount: prefer explicit partyBillAmount (> 0), else use lot's billAmount
+  // let arry = [];
   const getDisplayBill = (l) => {
-    console.log(partyEdits, 'partyEdits');
     const pe = partyEdits[l.id] || {};
-    console.log(pe, 'pe');
     if (pe.partyBillAmount != null && Number(pe.partyBillAmount) > 0) {
       return Number(pe.partyBillAmount);
     }
-    return Number(0);
+    return Number(l.billAmount ?? 0);
   };
 
-  // console.log(assignedLots, 'partyEdits');
 
   const filtered = useMemo(() => assignedLots.filter(l => {
     const q = search.toLowerCase();
@@ -73,7 +74,7 @@ export default function PartyLedger() {
     const matchQ = !q || lotLabel.includes(q)
       || l.designNo.toLowerCase().includes(q)
       || l.description.toLowerCase().includes(q);
-    const matchP = partyFilter === 'All' || String(l.partyId) === partyFilter;
+    const matchP = partyFilter === 'All' || samePartyId(l.partyId, partyFilter);
     const displayStatus = getDisplayStatus(l);
     const matchS = statusFilter === 'All' || displayStatus === statusFilter;
     return matchQ && matchP && matchS;
@@ -84,6 +85,7 @@ export default function PartyLedger() {
     const statusForForm = initialStatus || getDisplayStatus(lot);
     const existingComplete =
       formatYmd(pe.completeDate) || formatYmd(lot.receivedBackDate) || '';
+    setLedgerFormErrors({});
     setEditForm({
       allotDate: lot.allotDate || '',
       completeDate:
@@ -93,7 +95,7 @@ export default function PartyLedger() {
       billAmount: getDisplayBill(lot) || '',
       receipt: pe.receipt || '',
       notes: pe.notes || '',
-      partyId: lot.partyId || '',
+      partyId: lot.partyId != null && lot.partyId !== '' ? String(lot.partyId) : '',
       partyName: getPartyNameLocal(lot.partyId, lot.partyName),
     });
     setEditingId(lot.id);
@@ -103,9 +105,20 @@ export default function PartyLedger() {
     const lot = ghausiaLots.find(l => l.id === editingId);
     if (!lot) return;
 
+    if (editForm.status === 'Completed') {
+      const err = {};
+      if (!String(editForm.partyId || '').trim()) err.partyId = 'Party is required when status is Completed.';
+      if (!String(editForm.completeDate || '').trim()) err.completeDate = 'Complete date is required when status is Completed.';
+      if (Object.keys(err).length > 0) {
+        setLedgerFormErrors(err);
+        return;
+      }
+    }
+    setLedgerFormErrors({});
+
     setLedgerSaving(true);
     try {
-      const partyChanged = editForm.partyId && editForm.partyId !== lot.partyId;
+      const partyChanged = String(editForm.partyId || '').trim() !== '' && !samePartyId(editForm.partyId, lot.partyId);
 
       if (editForm.status === 'Completed') {
         await updatePartyEdit(editingId, {
@@ -120,7 +133,7 @@ export default function PartyLedger() {
           receivedBackDate: editForm.completeDate || new Date().toISOString().slice(0, 10),
         };
         if (partyChanged) {
-          const sel = parties.find(p => p.id === editForm.partyId);
+          const sel = parties.find(p => samePartyId(p.id, editForm.partyId));
           lotUpdates.partyId = editForm.partyId;
           lotUpdates.partyName = sel?.name || editForm.partyName;
         }
@@ -140,7 +153,7 @@ export default function PartyLedger() {
           lotUpdates.dispatchDate = lot.dispatchDate || new Date().toISOString().slice(0, 10);
         }
         if (partyChanged) {
-          const sel = parties.find(p => p.id === editForm.partyId);
+          const sel = parties.find(p => samePartyId(p.id, editForm.partyId));
           lotUpdates.partyId = editForm.partyId;
           lotUpdates.partyName = sel?.name || editForm.partyName;
         }
@@ -154,27 +167,32 @@ export default function PartyLedger() {
       setLedgerSaving(false);
     }
   };
-  const totalsValues = filtered.reduce(
-    (acc, item) => {
-      if (item.status === "dispatched") {
-        acc.dispatched += item.billAmount || 0;
-      }
-      if (item.status === "received back") {
-        acc.receivedBack += item.billAmount || 0;
-      }
-      return acc;
-    },
-    { dispatched: 0, receivedBack: 0 }
-  );
-  console.log(totalsValues, 'totalsValues');
 
-  const totals = useMemo(() => ({
-    lots: filtered.length,
-    billTotal: filtered.reduce((s, l) => s + getDisplayBill(l), 0),
-    completed: filtered.filter(l => getDisplayStatus(l) === 'Completed').length,
-    inProgress: filtered.filter(l => getDisplayStatus(l) === 'In Progress').length,
-    withReceipt: filtered.filter(l => partyEdits[l.id]?.receipt).length,
-  }), [filtered, partyEdits]);
+  const totals = useMemo(() => {
+    let completedAmount = 0;
+    let inProgressAmount = 0;
+  
+    filtered.forEach(l => {
+      const status = getDisplayStatus(l);
+      const bill = getDisplayBill(l);
+  
+      if (status === 'Completed') {
+        completedAmount += bill;
+      } else {
+        inProgressAmount += bill;
+      }
+    });
+  
+    return {
+      lots: filtered.length,
+      billTotal: filtered.reduce((s, l) => s + getDisplayBill(l), 0),
+      completed: filtered.filter(l => getDisplayStatus(l) === 'Completed').length,
+      inProgress: filtered.filter(l => getDisplayStatus(l) === 'In Progress').length,
+      completedAmount,
+      inProgressAmount,
+      withReceipt: filtered.filter(l => partyEdits[l.id]?.receipt).length,
+    };
+  }, [filtered, partyEdits]);
 
   const handleRowStatusChange = async (lot, newStatus) => {
     if (newStatus === 'Completed') {
@@ -207,15 +225,23 @@ export default function PartyLedger() {
           <div className="page-subtitle">All lots assigned to parties — editable completion details</div>
         </div>
       </div>
+      {/* {console.log(totals, 'totals')} */}
 
       {/* Summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 22 }}>
+      <div className='pl-grid'>
         {[
           { label: 'Assigned Lots', value: totals.lots, color: '#1e40af' },
           { label: 'Total Bill Value', value: `₨${totals.billTotal.toLocaleString()}`, color: '#7c3aed' },
-          { label: 'Completed', value: totals.completed, color: '#15803d' },
-          { label: 'In Progress', value: totals.inProgress, color: '#d97706' },
-          { label: 'With Receipts', value: totals.withReceipt, color: '#0284c7' },
+          {
+            label: <>Completed <strong style={{ fontSize: 14, color: '#15803d' }}>({totals.completed})</strong></>,
+            value: `₨${totals.completedAmount.toLocaleString()}`,
+            color: '#15803d'
+          },
+          {
+            label: <>In Progress <strong style={{ fontSize: 14, color: '#d97706' }}>({totals.inProgress})</strong></>,
+            value: `₨${totals.inProgressAmount.toLocaleString()}`,
+            color: '#d97706'
+          },
         ].map(c => (
           <div key={c.label} className="stat-card">
             <div className="stat-label">{c.label}</div>
@@ -256,6 +282,7 @@ export default function PartyLedger() {
                 <th>Status</th>
                 <th style={{ textAlign: 'right' }}>Bill Amount</th>
                 <th>Receipt</th>
+                <th>Notes</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -284,7 +311,7 @@ export default function PartyLedger() {
                     <td style={{ fontWeight: 500 }}>
                       {displayComplete || <span style={{ color: 'var(--text-muted)' }}>—</span>}
                     </td>
-                    <td>{l.partyId}</td>
+                    <td>{getPartyNameLocal(l.partyId, l.partyName)}</td>
                     <td>
                       <select
                         className="form-select"
@@ -308,6 +335,7 @@ export default function PartyLedger() {
                         : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>No receipt</span>
                       }
                     </td>
+                    <td>{pe.notes}</td>
                     <td>
                       <button
                         onClick={() => openEdit(l)}
@@ -328,10 +356,10 @@ export default function PartyLedger() {
       {editingId && editingLot && (
         <Modal
           title={`Edit — ${editingLot.lotNo || editingLot.lotNumber} / ${editingLot.designNo}`}
-          onClose={() => { if (!ledgerSaving) setEditingId(null); }}
+          onClose={() => { if (!ledgerSaving) { setEditingId(null); setLedgerFormErrors({}); } }}
           footer={
             <>
-              <button className="btn btn-ghost" onClick={() => setEditingId(null)} disabled={ledgerSaving}>Cancel</button>
+              <button className="btn btn-ghost" onClick={() => { setEditingId(null); setLedgerFormErrors({}); }} disabled={ledgerSaving}>Cancel</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={ledgerSaving} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 {ledgerSaving ? <><Loader /> Saving…</> : 'Save Changes'}
               </button>
@@ -351,31 +379,54 @@ export default function PartyLedger() {
           </div>
 
           <div className="grid-2">
-            <FormGroup label="Party Name">
+            <FormGroup label={editForm.status === 'Completed' ? 'Party Name *' : 'Party Name'}>
               <select
                 className="form-select"
                 value={editForm.partyId}
                 onChange={e => {
-                  const sel = parties.find(p => p.id === e.target.value);
+                  const sel = parties.find(p => samePartyId(p.id, e.target.value));
                   setEditForm(f => ({ ...f, partyId: e.target.value, partyName: sel?.name || '' }));
+                  if (ledgerFormErrors.partyId) setLedgerFormErrors(e2 => ({ ...e2, partyId: '' }));
                 }}
               >
                 <option value="">— Select Party —</option>
-                {parties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {parties.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
               </select>
+              {ledgerFormErrors.partyId && <span style={{ color: '#dc2626', fontSize: 11 }}>{ledgerFormErrors.partyId}</span>}
             </FormGroup>
             <FormGroup label="Allot Date">
               <input className="form-input" type="date" value={editForm.allotDate} onChange={e => setEditForm(f => ({ ...f, allotDate: e.target.value }))} />
             </FormGroup>
             <FormGroup label="Status">
-              <select className="form-select" value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}>
+              <select
+                className="form-select"
+                value={editForm.status}
+                onChange={e => {
+                  const next = e.target.value;
+                  setEditForm(f => ({
+                    ...f,
+                    status: next,
+                    ...(next === 'In Progress' ? { completeDate: '' } : {}),
+                  }));
+                  setLedgerFormErrors({});
+                }}
+              >
                 <option value="In Progress">In Progress</option>
                 <option value="Completed">Completed</option>
               </select>
             </FormGroup>
             {editForm.status === 'Completed' && (
-              <FormGroup label="Complete Date">
-                <input className="form-input" type="date" value={editForm.completeDate} onChange={e => setEditForm(f => ({ ...f, completeDate: e.target.value }))} />
+              <FormGroup label="Complete Date *">
+                <input
+                  className="form-input"
+                  type="date"
+                  value={editForm.completeDate}
+                  onChange={e => {
+                    setEditForm(f => ({ ...f, completeDate: e.target.value }));
+                    if (ledgerFormErrors.completeDate) setLedgerFormErrors(e2 => ({ ...e2, completeDate: '' }));
+                  }}
+                />
+                {ledgerFormErrors.completeDate && <span style={{ color: '#dc2626', fontSize: 11 }}>{ledgerFormErrors.completeDate}</span>}
               </FormGroup>
             )}
             <FormGroup label="Bill Amount (₨)">

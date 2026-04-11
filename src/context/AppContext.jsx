@@ -64,6 +64,14 @@ const INITIAL_PARTY_EDITS = {};
 
 const INITIAL_PAYMENTS = [];
 
+/** Mongo/API may return only `_id`; UI uses `id` everywhere. */
+const normalizeParty = (p) => {
+  if (!p) return p;
+  const rawId = p.id ?? p._id;
+  const id = rawId != null && rawId !== '' ? String(rawId) : '';
+  return { ...p, id };
+};
+
 export function AppProvider({ children }) {
   const [parties, setParties] = useState(INITIAL_PARTIES);
   const [ghausiaLots, setGhausiaLots] = useState(INITIAL_GHAUSIA);
@@ -82,7 +90,7 @@ export function AppProvider({ children }) {
         ]);
 
         if (Array.isArray(remoteParties) && remoteParties.length > 0) {
-          setParties(remoteParties);
+          setParties(remoteParties.map(normalizeParty));
         }
 
         if (Array.isArray(remoteLots) && remoteLots.length > 0) {
@@ -114,20 +122,22 @@ export function AppProvider({ children }) {
   }, []);
 
   const addParty = async (p) => {
-    const created = await apiService.createParty(p);
+    const created = normalizeParty(await apiService.createParty(p));
     setParties(arr => [...arr, created]);
     return created;
   };
 
   const updateParty = async (id, p) => {
-    const updated = await apiService.updateParty(id, p);
-    setParties(arr => arr.map(x => x.id === id ? updated : x));
+    const updated = normalizeParty(await apiService.updateParty(id, p));
+    const idStr = String(id);
+    setParties(arr => arr.map(x => String(x.id) === idStr ? updated : x));
     return updated;
   };
 
   const deleteParty = async (id) => {
     await apiService.deleteParty(id);
-    setParties(arr => arr.filter(x => x.id !== id));
+    const idStr = String(id);
+    setParties(arr => arr.filter(x => String(x.id) !== idStr));
   };
 
   const addLot = async (lot) => {
@@ -178,8 +188,12 @@ export function AppProvider({ children }) {
     setPayments(arr => arr.filter(x => x.id !== id));
   };
 
-  const getPartyById = (id) => parties.find(p => p.id === id);
-  const getPartyName = (id) => parties.find(p => p.id === id)?.name || 'Unknown';
+  const getPartyById = (id) => {
+    if (id == null || id === '') return undefined;
+    const idStr = String(id);
+    return parties.find(p => String(p.id) === idStr);
+  };
+  const getPartyName = (id) => getPartyById(id)?.name || 'Unknown';
 
   return (
     <AppContext.Provider value={{
