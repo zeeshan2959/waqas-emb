@@ -26,8 +26,9 @@ export default function PartyLedger() {
   // Only lots assigned to a party
   const assignedLots = useMemo(() =>
     ghausiaLots.filter(l => l.partyId || l.partyName),
-  [ghausiaLots]
-);
+    [ghausiaLots]
+  );
+  console.log();
 
   const formatYmd = (value) => {
     if (!value) return '';
@@ -35,7 +36,7 @@ export default function PartyLedger() {
     if (Number.isNaN(d.getTime())) return '';
     return d.toISOString().slice(0, 10);
   };
-  
+
 
   /** Party ledger completion date: party edit override, else Ghausia lot received-back date (syncs to PartyLedger.completeDate on server). */
   const getDisplayCompleteDate = (l, pe) => {
@@ -55,17 +56,15 @@ export default function PartyLedger() {
     parties.find(p => p.id === partyId)?.name || fallback || '—';
 
   // Bill amount: prefer explicit partyBillAmount (> 0), else use lot's billAmount
+  // let arry = [];
   const getDisplayBill = (l) => {
-    console.log(partyEdits, 'partyEdits');
     const pe = partyEdits[l.id] || {};
-    console.log(pe, 'pe');
     if (pe.partyBillAmount != null && Number(pe.partyBillAmount) > 0) {
       return Number(pe.partyBillAmount);
     }
     return Number(0);
   };
 
-  // console.log(assignedLots, 'partyEdits');
 
   const filtered = useMemo(() => assignedLots.filter(l => {
     const q = search.toLowerCase();
@@ -154,27 +153,32 @@ export default function PartyLedger() {
       setLedgerSaving(false);
     }
   };
-  const totalsValues = filtered.reduce(
-    (acc, item) => {
-      if (item.status === "dispatched") {
-        acc.dispatched += item.billAmount || 0;
-      }
-      if (item.status === "received back") {
-        acc.receivedBack += item.billAmount || 0;
-      }
-      return acc;
-    },
-    { dispatched: 0, receivedBack: 0 }
-  );
-  console.log(totalsValues, 'totalsValues');
 
-  const totals = useMemo(() => ({
-    lots: filtered.length,
-    billTotal: filtered.reduce((s, l) => s + getDisplayBill(l), 0),
-    completed: filtered.filter(l => getDisplayStatus(l) === 'Completed').length,
-    inProgress: filtered.filter(l => getDisplayStatus(l) === 'In Progress').length,
-    withReceipt: filtered.filter(l => partyEdits[l.id]?.receipt).length,
-  }), [filtered, partyEdits]);
+  const totals = useMemo(() => {
+    let completedAmount = 0;
+    let inProgressAmount = 0;
+  
+    filtered.forEach(l => {
+      const status = getDisplayStatus(l);
+      const bill = getDisplayBill(l);
+  
+      if (status === 'Completed') {
+        completedAmount += bill;
+      } else {
+        inProgressAmount += bill;
+      }
+    });
+  
+    return {
+      lots: filtered.length,
+      billTotal: filtered.reduce((s, l) => s + getDisplayBill(l), 0),
+      completed: filtered.filter(l => getDisplayStatus(l) === 'Completed').length,
+      inProgress: filtered.filter(l => getDisplayStatus(l) === 'In Progress').length,
+      completedAmount,
+      inProgressAmount,
+      withReceipt: filtered.filter(l => partyEdits[l.id]?.receipt).length,
+    };
+  }, [filtered, partyEdits]);
 
   const handleRowStatusChange = async (lot, newStatus) => {
     if (newStatus === 'Completed') {
@@ -207,15 +211,23 @@ export default function PartyLedger() {
           <div className="page-subtitle">All lots assigned to parties — editable completion details</div>
         </div>
       </div>
+      {/* {console.log(totals, 'totals')} */}
 
       {/* Summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 22 }}>
+      <div className='pl-grid'>
         {[
           { label: 'Assigned Lots', value: totals.lots, color: '#1e40af' },
           { label: 'Total Bill Value', value: `₨${totals.billTotal.toLocaleString()}`, color: '#7c3aed' },
-          { label: 'Completed', value: totals.completed, color: '#15803d' },
-          { label: 'In Progress', value: totals.inProgress, color: '#d97706' },
-          { label: 'With Receipts', value: totals.withReceipt, color: '#0284c7' },
+          {
+            label: <>Completed <strong style={{ fontSize: 14, color: '#15803d' }}>({totals.completed})</strong></>,
+            value: `₨${totals.completedAmount.toLocaleString()}`,
+            color: '#15803d'
+          },
+          {
+            label: <>In Progress <strong style={{ fontSize: 14, color: '#d97706' }}>({totals.inProgress})</strong></>,
+            value: `₨${totals.inProgressAmount.toLocaleString()}`,
+            color: '#d97706'
+          },
         ].map(c => (
           <div key={c.label} className="stat-card">
             <div className="stat-label">{c.label}</div>
@@ -256,6 +268,7 @@ export default function PartyLedger() {
                 <th>Status</th>
                 <th style={{ textAlign: 'right' }}>Bill Amount</th>
                 <th>Receipt</th>
+                <th>Notes</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -308,6 +321,7 @@ export default function PartyLedger() {
                         : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>No receipt</span>
                       }
                     </td>
+                    <td>{pe.notes}</td>
                     <td>
                       <button
                         onClick={() => openEdit(l)}
