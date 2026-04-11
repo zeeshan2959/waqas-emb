@@ -64,14 +64,17 @@ export default function Parties() {
     return !q || p.name.toLowerCase().includes(q) || p.phone?.toLowerCase().includes(q) || p.address?.toLowerCase().includes(q);
   });
 
+  /** Align with Party Ledger: "received back" counts as completed for party stats. */
   const lotStatusKey = (l) => {
     const pe = partyEdits[l.id] || {};
-    return String(pe.overrideStatus || l.status || '').toLowerCase();
+    const raw = String(pe.overrideStatus || l.status || '').toLowerCase();
+    if (raw === 'received back') return 'completed';
+    return raw;
   };
 
   const getLotStats = (partyId) => {
-    const pid = String(partyId);
-    const lots = ghausiaLots.filter(l => String(l.partyId) === pid);
+    const pid = String(partyId ?? '');
+    const lots = ghausiaLots.filter(l => String(l.partyId ?? '') === pid);
     const partyName = getPartyName(partyId);
     const totalPayable = lots.reduce((s, l) => {
       const pe = partyEdits[l.id] || {};
@@ -79,6 +82,9 @@ export default function Parties() {
     }, 0);
     const totalPaid = payments.filter(p => {
       if (p.type !== 'Paid') return false;
+      if (p.partyId != null && String(p.partyId).trim() !== '') {
+        return String(p.partyId) === pid;
+      }
       const payParty = String(p.party || '').trim();
       return payParty === String(partyName).trim();
     }).reduce((s, p) => s + Number(p.amount || 0), 0);
@@ -101,7 +107,7 @@ export default function Parties() {
         address: (formData.address || '').trim(),
       };
       if (editing) {
-        const pid = editing.id || editing._id;
+        const pid = editing.id ?? editing._id;
         await updateParty(String(pid), payload);
       } else {
         await addParty(payload);
@@ -115,7 +121,7 @@ export default function Parties() {
   const handleDelete = async () => {
     setDeleteLoading(true);
     try {
-      const pid = deleteTarget.id || deleteTarget._id;
+      const pid = deleteTarget.id ?? deleteTarget._id;
       await deleteParty(String(pid));
       setDeleteTarget(null);
     } finally {
@@ -157,7 +163,15 @@ export default function Parties() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 22 }}>
         {[
           { label: 'Total Parties', value: parties.length, color: '#1e40af' },
-          { label: 'Active Parties', value: parties.filter(p => ghausiaLots.some(l => String(l.partyId) === String(p.id) && String(l.status).toLowerCase() !== 'completed')).length, color: '#d97706' },
+          {
+            label: 'Active Parties',
+            value: parties.filter(p =>
+              ghausiaLots.some(l =>
+                String(l.partyId ?? '') === String(p.id ?? '') && lotStatusKey(l) !== 'completed'
+              )
+            ).length,
+            color: '#d97706',
+          },
           { label: 'Total Lots Assigned', value: ghausiaLots.filter(l => String(l.partyId || '').trim()).length, color: '#7c3aed' },
           // { label: 'Total Bill Value', value: `₨${ghausiaLots.reduce((s, l) => s + Number(l.billAmount || 0), 0).toLocaleString()}`, color: '#0284c7' },
         ].map(c => (
@@ -271,7 +285,7 @@ export default function Parties() {
           <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
             {(() => {
               const partyPayments = payments.filter(p => String(p.party || '').trim() === String(transactionParty.name || '').trim());
-              const partyLots = ghausiaLots.filter(l => String(l.partyId) === String(transactionParty.id));
+              const partyLots = ghausiaLots.filter(l => String(l.partyId ?? '') === String(transactionParty.id ?? transactionParty._id ?? ''));
               const transactions = [
                 ...partyPayments.map(p => ({ ...p, rowKind: 'payment' })),
                 ...partyLots.map(l => {

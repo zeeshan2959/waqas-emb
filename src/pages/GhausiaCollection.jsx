@@ -8,6 +8,18 @@ const FABRICS = ['Lawn', 'Velvet', 'Cambric'];
 const COLOR_OPTIONS = Array.from({ length: 13 }, (_, i) => i);
 const STATUS_OPTIONS = ['pending', 'dispatched', 'received back', 'completed'];
 
+function hasPositiveBillAmount(lot) {
+  return Number(lot?.billAmount || 0) > 0;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function LotForm({ initial, onSave, onClose, parties, saving }) {
   const blank = {
     lotNumber: '', lotNo: '', designNo: '', description: '', itemType: 'Lawn', fabric: 'Lawn', customFabric: '',
@@ -181,18 +193,94 @@ export default function GhausiaCollection() {
     'in progress':   { className: 'badge badge-inprogress', label: 'In Progress' },
   };
 
+  const promptBillAmountForCompletion = async (lot) => {
+    const lotNo = escapeHtml(String(lot.lotNumber || lot.lotNo || '').trim() || '—');
+    const designNo = escapeHtml(String(lot.designNo || '').trim() || '—');
+    const partyLabel = escapeHtml(
+      (lot.partyName && String(lot.partyName).trim())
+        || (lot.partyId ? getPartyName(lot.partyId) : '')
+        || '—',
+    );
+    const result = await Swal.fire({
+      title: 'Bill amount required',
+      html: `<p style="text-align:left;font-size:13px;margin:0 0 12px;color:var(--text-secondary)">This lot has no bill amount. Enter the amount received from the owner to mark it completed and add a <strong>Received</strong> entry in Payment Management.</p>
+        <div style="text-align:left;font-size:12px;color:var(--text-muted);line-height:1.5"><strong>Lot:</strong> ${lotNo} · <strong>Design:</strong> ${designNo}<br/><strong>Party:</strong> ${partyLabel}</div>`,
+      input: 'number',
+      inputPlaceholder: 'Amount (₨)',
+      inputAttributes: { min: 1, step: 1 },
+      showCancelButton: true,
+      confirmButtonText: 'Complete & record payment',
+      cancelButtonText: 'Cancel',
+      focusConfirm: false,
+      preConfirm: (value) => {
+        const n = Number(value);
+        if (value === '' || value == null || Number.isNaN(n) || n <= 0) {
+          Swal.showValidationMessage('Enter a valid amount greater than zero');
+          return false;
+        }
+        return n;
+      },
+    });
+    if (result.isConfirmed && result.value != null) return Number(result.value);
+    return null;
+  };
+
+  const recordOwnerReceivedForCompletedLot = async (lotRef, amount, paymentDate) => {
+    const linkedLot = String(lotRef.lotNumber || lotRef.lotNo || '').trim();
+    const partyName = (lotRef.partyName && String(lotRef.partyName).trim()) || (lotRef.partyId ? getPartyName(lotRef.partyId) : '') || '';
+    const designNo = String(lotRef.designNo || '').trim() || '—';
+    await addPayment({
+      type: 'Received',
+      amount: Number(amount),
+      party: 'Owner',
+      date: paymentDate,
+      linkedLot,
+      note: `Lot completed — Party: ${partyName || '—'}; Design: ${designNo}; Type: ${lotRef.itemType || lotRef.fabric || '—'}`,
+    });
+  };
+
   const setLotStatus = async (lot, newStatus) => {
     const today = new Date().toISOString().slice(0, 10);
     const lotUpdate = { status: newStatus };
     if (newStatus === 'dispatched') lotUpdate.dispatchDate = today;
     if (newStatus === 'received back' || newStatus === 'completed') lotUpdate.receivedBackDate = today;
-    await updateLot(lot.id, lotUpdate);
+
+    let shouldRecordOwnerPayment = false;
+    if (newStatus === 'completed' && !hasPositiveBillAmount(lot)) {
+      const amount = await promptBillAmountForCompletion(lot);
+      if (amount == null) return;
+      lotUpdate.billAmount = amount;
+      shouldRecordOwnerPayment = true;
+    }
+
+    try {
+      await updateLot(lot.id, lotUpdate);
+    } catch (e) {
+      Swal.fire({ icon: 'error', title: 'Could not update lot', text: 'Please try again.' });
+      return;
+    }
 
     const ledgerStatus = newStatus === 'dispatched' ? 'In Progress' : (newStatus === 'completed' ? 'Completed' : newStatus);
-    await updatePartyEdit(lot.id, {
-      overrideStatus: ledgerStatus,
-      completeDate: newStatus === 'completed' ? today : '',
-    });
+    try {
+      await updatePartyEdit(lot.id, {
+        overrideStatus: ledgerStatus,
+        completeDate: newStatus === 'completed' ? today : '',
+      });
+    } catch (e) {
+      console.error(e);
+    }
+
+    if (shouldRecordOwnerPayment) {
+      try {
+        await recordOwnerReceivedForCompletedLot({ ...lot, ...lotUpdate }, lotUpdate.billAmount, today);
+      } catch (e) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'Lot updated; payment failed',
+          text: 'The lot was marked completed with a bill amount, but saving the owner payment failed. Add it manually from Payment Management if needed.',
+        });
+      }
+    }
 
     if (statusFilter !== 'All' && newStatus !== statusFilter) {
       setStatusFilter('All');
@@ -216,10 +304,63 @@ export default function GhausiaCollection() {
   const openAdd = () => { setEditing(null); setModal('form'); };
 
   const handleSave = async (form) => {
+    const prev = editing;
+    const wasCompleted = prev?.status === 'completed';
+    const nowCompleted = form.status === 'completed';
+    const becomingCompleted = nowCompleted && !wasCompleted;
+    let saveForm = { ...form };
+    let recordOwnerPaymentAfterSave = false;
+
+    if (becomingCompleted && !hasPositiveBillAmount(saveForm)) {
+      const lotForPrompt = prev ? { ...prev, ...saveForm } : saveForm;
+      const amount = await promptBillAmountForCompletion(lotForPrompt);
+      if (amount == null) return;
+      saveForm = { ...saveForm, billAmount: amount };
+      recordOwnerPaymentAfterSave = true;
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
     setLotSaving(true);
     try {
-      if (editing) await updateLot(editing.id, form);
-      else await addLot(form);
+      if (prev) {
+        await updateLot(prev.id, saveForm);
+        if (saveForm.status === 'completed') {
+          await updatePartyEdit(prev.id, {
+            overrideStatus: 'Completed',
+            completeDate: today,
+          });
+        }
+        if (recordOwnerPaymentAfterSave) {
+          try {
+            await recordOwnerReceivedForCompletedLot({ ...prev, ...saveForm }, saveForm.billAmount, today);
+          } catch (e) {
+            Swal.fire({
+              icon: 'warning',
+              title: 'Lot saved; payment failed',
+              text: 'Add the owner payment manually from Payment Management if needed.',
+            });
+          }
+        }
+      } else {
+        const created = await addLot(saveForm);
+        if (saveForm.status === 'completed') {
+          await updatePartyEdit(created.id, {
+            overrideStatus: 'Completed',
+            completeDate: today,
+          });
+        }
+        if (recordOwnerPaymentAfterSave) {
+          try {
+            await recordOwnerReceivedForCompletedLot({ ...created, ...saveForm }, saveForm.billAmount, today);
+          } catch (e) {
+            Swal.fire({
+              icon: 'warning',
+              title: 'Lot saved; payment failed',
+              text: 'Add the owner payment manually from Payment Management if needed.',
+            });
+          }
+        }
+      }
       setModal(null); setEditing(null);
     } finally {
       setLotSaving(false);

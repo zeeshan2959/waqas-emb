@@ -33,7 +33,7 @@ export default function Dashboard() {
   const recentLots = [...ghausiaLots].reverse().slice(0, 6);
 
   const partyStats = parties.map(p => {
-    const lots = ghausiaLots.filter(l => l.partyId === p.id);
+    const lots = ghausiaLots.filter(l => String(l.partyId ?? '') === String(p.id ?? ''));
     return {
       name: p.name,
       total: lots.length,
