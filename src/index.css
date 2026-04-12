@@ -1143,12 +1143,26 @@ tbody tr:last-child td {
   gap: 12px;
   margin-bottom: 22px;
 }
+.saved-designs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 22px;
+
+}
 
 @media screen and (max-width: 768px) {
   .pl-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
     margin-bottom: 22px;
+  }
+  .saved-designs-grid {
+    display: grid;
+    grid-template-columns: repeat(1, 1fr);
+    gap: 12px;
+    margin-bottom: 22px;
+  
   }
 }
 

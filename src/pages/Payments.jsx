@@ -3,6 +3,7 @@ import Swal from 'sweetalert2';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, EmptyState } from '../components/UI';
 import Loader from '../components/Loader';
+import LoaderDashboard from '../components/LoaderDashboard';
 
 export default function Payments() {
   const { payments, addPayment, deletePayment, ghausiaLots, parties, initialDataLoading } = useApp();
@@ -68,8 +69,8 @@ export default function Payments() {
 
   if (initialDataLoading) {
     return (
-      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-        <Loader />
+      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <LoaderDashboard height={30} width={30}/>
       </div>
     );
   }

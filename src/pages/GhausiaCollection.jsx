@@ -3,6 +3,7 @@ import Swal from 'sweetalert2';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, StatusBadge, ActionBtn, SearchBar, EmptyState, ConfirmDialog } from '../components/UI';
 import Loader from '../components/Loader';
+import LoaderDashboard from '../components/LoaderDashboard';
 
 const FABRICS = ['Lawn', 'Velvet', 'Cambric'];
 const COLOR_OPTIONS = Array.from({ length: 13 }, (_, i) => i);
@@ -19,6 +20,7 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+const newDate= new Date().toISOString().split('T')[0];
 
 function LotForm({ initial, onSave, onClose, parties, saving }) {
   const blank = {
@@ -27,7 +29,7 @@ function LotForm({ initial, onSave, onClose, parties, saving }) {
     //  totalAmount: '', 
     //  notes: '',
     allotDate: new Date().toISOString().slice(0, 10), partyId: '', partyName: '',
-    status: 'pending', dispatchDate: '', receivedBackDate: '',
+    status: 'pending', dispatchDate: newDate, receivedBackDate: '',
   };
   const [form, setForm] = useState(initial ? {
     ...blank,
@@ -442,8 +444,8 @@ export default function GhausiaCollection() {
 
   if (initialDataLoading) {
     return (
-      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-        <Loader />
+      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <LoaderDashboard height={30} width={30}/>
       </div>
     );
   }
@@ -481,10 +483,10 @@ export default function GhausiaCollection() {
       {/* Payment Panel */}
       <div className="card" style={{ marginBottom: 22 }}>
         <div className="card-header">
-          <span className="card-title">Payment Management</span>
-          <button className="btn btn-success btn-sm" onClick={() => setPayModal(true)}>+ Record Payment</button>
+          <span className="card-title">Billable lots to Owner</span>
+          {/* <button className="btn btn-success btn-sm" onClick={() => setPayModal(true)}>+ Record Payment</button> */}
         </div>
-        <div style={{ padding: 0 }}>
+        {/* <div style={{ padding: 0 }}>
           {payments.length === 0 ? (
             <p style={{ padding: 16, color: 'var(--text-muted)', fontSize: 13 }}>No payments yet.</p>
           ) : (
@@ -528,7 +530,7 @@ export default function GhausiaCollection() {
               </table>
             </div>
           )}
-        </div>
+        </div> */}
         {billable.length > 0 && (
           <div style={{ margin: '0', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: 14 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#92600A', marginBottom: 10 }}>
@@ -536,7 +538,7 @@ export default function GhausiaCollection() {
             </div>
             {billable.map(l => (
               <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #FDE68A' }}>
-                <span>{l.lotNumber || l.lotNo} / {l.designNo} — <span style={{ color: '#92600A' }}>{l.partyId || l.partyName}</span></span>
+                <span>{l.lotNumber || l.lotNo} / {l.designNo} — <span style={{ color: '#92600A' }}>{l.partyName}</span></span>
                 <strong style={{ color: '#92600A' }}>₨{Number(l.billAmount).toLocaleString()}</strong>
               </div>
             ))}

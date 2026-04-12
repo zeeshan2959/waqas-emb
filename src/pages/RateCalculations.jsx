@@ -9,15 +9,17 @@ export default function StitchCalculator() {
   const [rows, setRows] = useState([{ baseStitches: "", repeat: 1 }]);
   const [rate, setRate] = useState("");
   const [pieces, setPieces] = useState(1);
+  const [selectedDesign, setSelectedDesign] = useState(null);
 
   // Saved designs state
   const [savedDesigns, setSavedDesigns] = useState([]);
   const [saveModal, setSaveModal] = useState(false);
+  const [saveDesignModal, setSaveDesignModal] = useState(false);
   const [designNumber, setDesignNumber] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const repeats = [0.5, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 7.5, 8, 9, 10];
+  const repeats = [1/6,1/3, 0.5, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 7.5, 8, 9, 10];
 
   const handleChange = (index, field, value) => {
     const updated = [...rows];
@@ -120,6 +122,12 @@ export default function StitchCalculator() {
       console.error("Failed to delete design:", error);
       Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to delete design. Please try again.' });
     }
+  };
+
+  const handleSaveDesignModal = (id) => {
+    setSaveDesignModal(true);
+    setSelectedDesign(id);
+
   };
 
   const filteredDesigns = savedDesigns.filter((design) =>
@@ -316,7 +324,7 @@ export default function StitchCalculator() {
                   : "No designs match your search"}
               </div>
             ) : (
-              <div style={{ display: "grid", gap: 12 }}>
+              <div className="saved-designs-grid">
                 {filteredDesigns.map((design) => (
                   <div
                     key={design.id}
@@ -332,7 +340,6 @@ export default function StitchCalculator() {
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "flex-start",
-                        marginBottom: 12,
                       }}
                     >
                       <div>
@@ -346,10 +353,11 @@ export default function StitchCalculator() {
                           {design.designNumber}
                         </div>
                         <div style={{ fontSize: 12, color: "#6B7280" }}>
-                          {new Date(design.createdAt).toLocaleDateString()}
+                        ₨{format(design.onePieceRate)}
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={()=>handleSaveDesignModal(design.id)} className="btn btn-primary">Show Details</button>
                         <button
                           onClick={() => loadDesign(design)}
                           className="btn btn-primary"
@@ -364,98 +372,6 @@ export default function StitchCalculator() {
                       </div>
                     </div>
 
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-                        gap: 12,
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: 12, color: "#6B7280" }}>
-                          Stitches
-                        </div>
-                        <div style={{ fontSize: 14, fontWeight: 600 }}>
-                          {format(design.grandTotal)}
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 12, color: "#6B7280" }}>Per 1000 Stitches</div>
-                        <div style={{ fontSize: 14, fontWeight: 600 }}>
-                          ₨{format(design.rate)}
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 12, color: "#6B7280" }}>
-                          One Piece
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 14,
-                            fontWeight: 600,
-                            color: "#7C3AED",
-                          }}
-                        >
-                          ₨{format(design.onePieceRate)}
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 12, color: "#6B7280" }}>Pieces</div>
-                        <div style={{ fontSize: 14, fontWeight: 600 }}>
-                          {design.pieces}
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 12, color: "#6B7280" }}>
-                          Total Cost
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 14,
-                            fontWeight: 600,
-                            color: "#059669",
-                          }}
-                        >
-                          ₨{format(design.totalCost)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Show all entries */}
-                    <div
-                      style={{
-                        marginTop: 12,
-                        paddingTop: 12,
-                        borderTop: "1px solid #E5E7EB",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: "#374151",
-                          marginBottom: 8,
-                        }}
-                      >
-                        Entries:
-                      </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                        {design.rows.map((row, idx) => (
-                          <div
-                            key={idx}
-                            style={{
-                              background: "#F3F4F6",
-                              padding: "4px 8px",
-                              borderRadius: 6,
-                              fontSize: 11,
-                              color: "#4B5563",
-                            }}
-                          >
-                            {format(row.baseStitches)} × {row.repeat}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
                   </div>
                 ))}
               </div>
@@ -463,6 +379,153 @@ export default function StitchCalculator() {
           </>
         }
       </div>
+      {saveDesignModal && (
+        <Modal
+          title="Save Design"
+          onClose={() => setSaveDesignModal(false)}
+          footer={
+            <>
+              <button
+                className="btn btn-ghost"
+                onClick={() => setSaveDesignModal(false)}
+              >
+                Cancel
+              </button>
+            </>
+          }
+        >
+          <div style={{ display: "grid", gap: 12 }}>
+            {filteredDesigns.filter((design) => design.id === selectedDesign).map((design) => (
+              <div
+                key={design.id}
+                style={{
+                  padding: 16,
+                  border: "1px solid #E5E7EB",
+                  borderRadius: 8,
+                  background: "#FFF",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    marginBottom: 12,
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 600,
+                        color: "#1F2937",
+                      }}
+                    >
+                      {design.designNumber}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>
+                      {new Date(design.createdAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>
+                      Stitches
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>
+                      {format(design.grandTotal)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>Per 1000 Stitches</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>
+                      ₨{format(design.rate)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>
+                      One Piece
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "#7C3AED",
+                      }}
+                    >
+                      ₨{format(design.onePieceRate)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>Pieces</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>
+                      {design.pieces}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>
+                      Total Cost
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "#059669",
+                      }}
+                    >
+                      ₨{format(design.totalCost)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Show all entries */}
+                <div
+                  style={{
+                    marginTop: 12,
+                    paddingTop: 12,
+                    borderTop: "1px solid #E5E7EB",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "#374151",
+                      marginBottom: 8,
+                    }}
+                  >
+                    Entries:
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {design.rows.map((row, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          background: "#F3F4F6",
+                          padding: "4px 8px",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          color: "#4B5563",
+                        }}
+                      >
+                        {format(row.baseStitches)} × {row.repeat}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
