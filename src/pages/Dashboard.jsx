@@ -1,7 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { StatusBadge } from '../components/UI';
-import Loader from '../components/Loader';
 import LoaderDashboard from '../components/LoaderDashboard';
 
 const toTitleCase = (s) =>
@@ -30,7 +29,7 @@ export default function Dashboard() {
   const partyOut = payments.filter(p => p.type === 'Paid').reduce((s, p) => s + Number(p.amount || 0), 0);
   const balance = ownerIn - partyOut;
 
-  const recentLots = [...ghausiaLots].reverse().slice(0, 6);
+  const recentLots = [...ghausiaLots].slice(0, 12);
 
   const partyStats = parties.map(p => {
     const lots = ghausiaLots.filter(l => String(l.partyId ?? '') === String(p.id ?? ''));
@@ -146,7 +145,7 @@ export default function Dashboard() {
                   {billable.map(l => (
                     <tr key={l.id}>
                       <td><span style={{ fontWeight: 600 }}>{l.lotNo || l.lotNumber}</span> / {l.designNo}</td>
-                      <td style={{ color: 'var(--text-secondary)' }}>{l.partyId}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{l.partyName}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600, color: '#dc2626' }}>
                         ₨{Number(l.billAmount).toLocaleString()}
                       </td>
@@ -202,7 +201,7 @@ export default function Dashboard() {
                   <tr key={l.id}>
                     <td style={{ fontWeight: 600 }}>{l.lotNo || l.lotNumber}</td>
                     <td>{l.designNo}</td>
-                    <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{l.partyId}</td>
+                    <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{l.partyName}</td>
                     <td><StatusBadge status={toTitleCase(l.status)} /></td>
                   </tr>
                 ))}

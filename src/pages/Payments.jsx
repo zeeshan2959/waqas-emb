@@ -3,6 +3,33 @@ import Swal from 'sweetalert2';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, EmptyState } from '../components/UI';
 import Loader from '../components/Loader';
+import LoaderDashboard from '../components/LoaderDashboard';
+
+function normalizeLotKey(linkedLot) {
+  return String(linkedLot || '').trim().toLowerCase();
+}
+
+function lotDisplayRef(l) {
+  return String(l.lotNumber ?? l.lotNo ?? '').trim();
+}
+
+function findLotByLinkedValue(ghausiaLots, linkedLotValue) {
+  if (!linkedLotValue) return undefined;
+  const key = normalizeLotKey(linkedLotValue);
+  return ghausiaLots.find((l) => normalizeLotKey(lotDisplayRef(l)) === key);
+}
+
+const paymentToast = (icon, title) => {
+  Swal.fire({
+    toast: true,
+    position: 'top-end',
+    icon,
+    title,
+    showConfirmButton: false,
+    timer: icon === 'success' ? 2800 : 4200,
+    timerProgressBar: true,
+  });
+};
 
 export default function Payments() {
   const { payments, addPayment, deletePayment, ghausiaLots, parties, initialDataLoading } = useApp();
@@ -17,6 +44,37 @@ export default function Payments() {
     [payments, typeFilter]
   );
 
+  const usedReceivedLotKeys = useMemo(() => new Set(
+    payments
+      .filter((p) => p.type === 'Received' && p.linkedLot)
+      .map((p) => normalizeLotKey(p.linkedLot)),
+  ), [payments]);
+
+  const usedPaidLotKeys = useMemo(() => new Set(
+    payments
+      .filter((p) => p.type === 'Paid' && p.linkedLot)
+      .map((p) => normalizeLotKey(p.linkedLot)),
+  ), [payments]);
+
+  const linkedLotOptions = useMemo(() => {
+    if (form.type === 'Received') {
+      return ghausiaLots.filter((l) => !usedReceivedLotKeys.has(normalizeLotKey(lotDisplayRef(l))));
+    }
+    if (form.type !== 'Paid' || !form.party || form.party === 'Other') {
+      return [];
+    }
+    const party = parties.find(p => p.name === form.party);
+    if (!party) return [];
+    return ghausiaLots.filter((l) => {
+      if (l.status !== 'completed') return false;
+      const byId = party.id != null && l.partyId != null && String(l.partyId) === String(party.id);
+      const byName = l.partyName && String(l.partyName).trim() === String(party.name).trim();
+      if (!byId && !byName) return false;
+      if (usedPaidLotKeys.has(normalizeLotKey(lotDisplayRef(l)))) return false;
+      return true;
+    });
+  }, [form.type, form.party, ghausiaLots, parties, usedReceivedLotKeys, usedPaidLotKeys]);
+
   const ownerIn = payments.filter(p => p.type === 'Received').reduce((s, p) => s + p.amount, 0);
   const partyOut = payments.filter(p => p.type === 'Paid').reduce((s, p) => s + p.amount, 0);
   const balance = ownerIn - partyOut;
@@ -26,6 +84,17 @@ export default function Payments() {
     if (!form.amount) newErrors.amount = 'Amount is required';
     if (!form.date) newErrors.date = 'Date is required';
     if (form.type === 'Paid' && !form.party) newErrors.party = 'Please select a party';
+    if (form.linkedLot) {
+      const key = normalizeLotKey(form.linkedLot);
+      const dup = payments.some(
+        (p) => p.type === form.type && p.linkedLot && normalizeLotKey(p.linkedLot) === key,
+      );
+      if (dup) {
+        newErrors.linkedLot = form.type === 'Received'
+          ? 'An owner payment is already linked to this lot. Each lot can only be used once.'
+          : 'A party payment is already linked to this lot. Each lot can only be paid once.';
+      }
+    }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -38,8 +107,9 @@ export default function Payments() {
       setForm({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
       setErrors({});
       setModal(false);
+      paymentToast('success', 'Payment saved successfully');
     } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to save payment. Please try again.' });
+      paymentToast('error', 'Payment could not be saved. Please try again.');
     } finally {
       setPaymentSaving(false);
     }
@@ -68,8 +138,8 @@ export default function Payments() {
 
   if (initialDataLoading) {
     return (
-      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-        <Loader />
+      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <LoaderDashboard height={30} width={30}/>
       </div>
     );
   }
@@ -218,22 +288,18 @@ export default function Payments() {
             <FormGroup label="Type">
               <select className="form-select" value={form.type} onChange={e => {
                 const newType = e.target.value;
-                setForm(f => ({ ...f, type: newType, party: newType === 'Received' ? 'Owner' : '' }));
+                setForm(f => ({
+                  ...f,
+                  type: newType,
+                  party: newType === 'Received' ? 'Owner' : '',
+                  linkedLot: '',
+                  amount: '',
+                }));
                 setErrors(prev => ({ ...prev, party: undefined }));
               }}>
                 <option>Received</option>
                 <option>Paid</option>
               </select>
-            </FormGroup>
-            <FormGroup label="Amount (₨) *">
-              <input
-                className={`form-input${errors.amount ? ' input-error' : ''}`}
-                type="number"
-                value={form.amount}
-                onChange={e => { setForm(f => ({ ...f, amount: e.target.value })); setErrors(p => ({ ...p, amount: undefined })); }}
-                placeholder="50000"
-              />
-              {errors.amount && <span style={{ color: '#dc2626', fontSize: 11, marginTop: 3, display: 'block' }}>{errors.amount}</span>}
             </FormGroup>
             <FormGroup label={form.type === 'Received' ? 'Received From' : 'Paid To *'}>
               {form.type === 'Received' ? (
@@ -243,7 +309,10 @@ export default function Payments() {
                   <select
                     className={`form-select${errors.party ? ' input-error' : ''}`}
                     value={form.party}
-                    onChange={e => { setForm(f => ({ ...f, party: e.target.value })); setErrors(p => ({ ...p, party: undefined })); }}
+                    onChange={e => {
+                      setForm(f => ({ ...f, party: e.target.value, linkedLot: '', amount: '' }));
+                      setErrors(p => ({ ...p, party: undefined }));
+                    }}
                   >
                     <option value="">— Select Party —</option>
                     {parties.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
@@ -253,6 +322,64 @@ export default function Payments() {
                 </>
               )}
             </FormGroup>
+            <FormGroup label="Linked Lot (optional)">
+              <select
+                className={`form-select${errors.linkedLot ? ' input-error' : ''}`}
+                value={form.linkedLot}
+                onChange={e => {
+                  const v = e.target.value;
+                  const lot = findLotByLinkedValue(ghausiaLots, v);
+                  const bill = lot ? Number(lot.billAmount || 0) : 0;
+                  setForm((f) => ({
+                    ...f,
+                    linkedLot: v,
+                    amount: v && bill > 0 ? String(bill) : (v ? '' : ''),
+                  }));
+                  setErrors((p) => ({ ...p, linkedLot: undefined, amount: undefined }));
+                }}
+                disabled={form.type === 'Paid' && !form.party}
+              >
+                <option value="">None</option>
+                {linkedLotOptions.map(l => (
+                  <option key={l.id} value={l.lotNo || l.lotNumber}>
+                    {l.lotNo || l.lotNumber} / {l.designNo}{form.type === 'Received' ? ` — ${l.status}` : ''}
+                  </option>
+                ))}
+              </select>
+              {errors.linkedLot && (
+                <span style={{ color: '#dc2626', fontSize: 11, marginTop: 4, display: 'block' }}>{errors.linkedLot}</span>
+              )}
+              {form.type === 'Received' && (
+                <span style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 4, display: 'block' }}>
+                  Lots that already have a linked Received payment are hidden. Use None when the payment is not tied to a single lot.
+                </span>
+              )}
+              {form.type === 'Paid' && !form.party && (
+                <span style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 4, display: 'block' }}>
+                  Select a party to list completed lots for that party.
+                </span>
+              )}
+              {form.type === 'Paid' && form.party && form.party !== 'Other' && linkedLotOptions.length === 0 && (
+                <span style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 4, display: 'block' }}>
+                  No completed lots left for this party (remaining lots may already have a Paid entry linked).
+                </span>
+              )}
+            </FormGroup>
+            <FormGroup label="Amount (₨) *">
+              <input
+                className={`form-input${errors.amount ? ' input-error' : ''}`}
+                type="number"
+                value={form.amount}
+                onChange={e => { setForm(f => ({ ...f, amount: e.target.value })); setErrors(p => ({ ...p, amount: undefined })); }}
+                placeholder={form.linkedLot ? 'Filled from lot bill, or enter amount' : '50000'}
+              />
+              {form.linkedLot && (
+                <span style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 4, display: 'block' }}>
+                  Default is the bill amount for this lot — you can change it before saving.
+                </span>
+              )}
+              {errors.amount && <span style={{ color: '#dc2626', fontSize: 11, marginTop: 3, display: 'block' }}>{errors.amount}</span>}
+            </FormGroup>
             <FormGroup label="Date *">
               <input
                 className={`form-input${errors.date ? ' input-error' : ''}`}
@@ -261,12 +388,6 @@ export default function Payments() {
                 onChange={e => { setForm(f => ({ ...f, date: e.target.value })); setErrors(p => ({ ...p, date: undefined })); }}
               />
               {errors.date && <span style={{ color: '#dc2626', fontSize: 11, marginTop: 3, display: 'block' }}>{errors.date}</span>}
-            </FormGroup>
-            <FormGroup label="Linked Lot (optional)">
-              <select className="form-select" value={form.linkedLot} onChange={e => setForm(f => ({ ...f, linkedLot: e.target.value }))}>
-                <option value="">None</option>
-                {ghausiaLots.map(l => <option key={l.id} value={l.lotNo || l.lotNumber}>{l.lotNo || l.lotNumber} / {l.designNo} — {l.status}</option>)}
-              </select>
             </FormGroup>
             <FormGroup label="Note">
               <input className="form-input" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="Optional note" />

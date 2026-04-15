@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, SearchBar, EmptyState, ConfirmDialog } from '../components/UI';
 import Loader from '../components/Loader';
+import LoaderDashboard from '../components/LoaderDashboard';
 
 function toPartyFormFields(initial) {
   if (!initial) return { name: '', phone: '', address: '' };
@@ -131,8 +132,8 @@ export default function Parties() {
 
   if (initialDataLoading) {
     return (
-      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-        <Loader />
+      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <LoaderDashboard  height={30} width={30}/>
       </div>
     );
   }
@@ -194,6 +195,7 @@ export default function Parties() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
           {filtered.map((party, idx) => {
             const stats = getLotStats(party.id);
+            console.log(stats);
             const [bg, text] = avatarColors[idx % avatarColors.length];
             return (
               <div key={party.id} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, boxShadow: 'var(--shadow)', overflow: 'hidden', transition: 'box-shadow 0.15s' }}>
@@ -237,8 +239,8 @@ export default function Parties() {
                     { label: 'Lots', value: stats.total, color: '#1e40af' },
                     { label: 'Active', value: stats.active, color: '#d97706' },
                     { label: 'Done', value: stats.completed, color: '#15803d' },
-                    { label: 'Total', value: stats.total > 0 ? `₨${(stats.totalValue / 1000).toFixed(0)}K` : '—', color: '#7c3aed' },
-                    { label: 'Remaining', value: stats.remaining > 0 ? `₨${(stats.remaining / 1000).toFixed(0)}K` : '—', color: stats.remaining > 0 ? '#dc2626' : '#15803d' },
+                    { label: 'Total', value: stats.total > 0 ? `₨${stats.totalValue}` : '—', color: '#7c3aed' },
+                    { label: 'Remaining', value: stats.remaining, color: '#dc2626'},
                   ].map(s => (
                     <div key={s.label} style={{ textAlign: 'center' }}>
                       <div style={{ fontSize: 14, fontWeight: 700, color: s.color }}>{s.value}</div>

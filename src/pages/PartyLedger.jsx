@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, StatusBadge, SearchBar, EmptyState } from '../components/UI';
 import Loader from '../components/Loader';
+import LoaderDashboard from '../components/LoaderDashboard';
 
 // From the party's perspective: dispatched = In Progress, received back = Completed
 const toLedgerStatus = (status) => {
@@ -14,6 +15,97 @@ const toLedgerStatus = (status) => {
 const toTitleCase = (s) =>
   String(s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
+function readReceiptAsStoredValue(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve('');
+      return;
+    }
+    if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+      return;
+    }
+    resolve(file.name);
+  });
+}
+
+/** @returns {'image'|'pdf'|'url'|'filename'|'none'} */
+function receiptPreviewKind(receipt) {
+  const s = String(receipt || '').trim();
+  if (!s) return 'none';
+  if (/^data:image\//i.test(s)) return 'image';
+  if (/^data:application\/pdf/i.test(s)) return 'pdf';
+  if (/^https?:\/\//i.test(s)) return 'url';
+  return 'filename';
+}
+
+function ReceiptThumbButton({ receipt, lotLabel, onOpen }) {
+  const kind = receiptPreviewKind(receipt);
+  if (kind === 'none') return null;
+
+  const baseBtn = {
+    padding: 0,
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    borderRadius: 8,
+    lineHeight: 0,
+    display: 'inline-block',
+    verticalAlign: 'middle',
+  };
+
+  if (kind === 'image') {
+    return (
+      <button type="button" aria-label="View receipt image" title="View receipt" style={baseBtn} onClick={() => onOpen({ kind: 'image', src: receipt, title: lotLabel })}>
+        <img
+          src={receipt}
+          alt=""
+          style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', display: 'block' }}
+        />
+      </button>
+    );
+  }
+
+  if (kind === 'pdf') {
+    return (
+      <button type="button" aria-label="View receipt PDF" title="View receipt PDF" style={{ ...baseBtn, padding: 6, background: '#FEF2F2', border: '1px solid #FECACA' }} onClick={() => onOpen({ kind: 'pdf', src: receipt, title: lotLabel })}>
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="#b91c1c" strokeWidth="1.5" />
+          <polyline points="14 2 14 8 20 8" stroke="#b91c1c" strokeWidth="1.5" />
+          <path d="M9 13h6M9 17h4" stroke="#b91c1c" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+    );
+  }
+
+  if (kind === 'url') {
+    return (
+      <button type="button" aria-label="View receipt" title="View receipt" style={baseBtn} onClick={() => onOpen({ kind: 'url', src: receipt, title: lotLabel })}>
+        <img
+          src={receipt}
+          alt=""
+          style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', display: 'block', background: '#f3f4f6' }}
+        />
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label="Receipt file (no preview)"
+      title={receipt}
+      style={{ ...baseBtn, padding: '8px 10px', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8 }}
+      onClick={() => onOpen({ kind: 'filename', name: receipt, title: lotLabel })}
+    >
+      <span style={{ fontSize: 20 }}>📄</span>
+    </button>
+  );
+}
+
 export default function PartyLedger() {
   const { ghausiaLots, updateLot, partyEdits, updatePartyEdit, parties, initialDataLoading } = useApp();
   const [search, setSearch] = useState('');
@@ -23,6 +115,7 @@ export default function PartyLedger() {
   const [editForm, setEditForm] = useState({});
   const [ledgerSaving, setLedgerSaving] = useState(false);
   const [ledgerFormErrors, setLedgerFormErrors] = useState({});
+  const [receiptPreview, setReceiptPreview] = useState(null);
 
   // Only lots assigned to a party
   const assignedLots = useMemo(() =>
@@ -64,7 +157,7 @@ export default function PartyLedger() {
     if (pe.partyBillAmount != null && Number(pe.partyBillAmount) > 0) {
       return Number(pe.partyBillAmount);
     }
-    return Number(l.billAmount ?? 0);
+    return Number(0);
   };
 
 
@@ -211,8 +304,8 @@ export default function PartyLedger() {
 
   if (initialDataLoading) {
     return (
-      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-        <Loader />
+      <div style={{ textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <LoaderDashboard height={30} width={30}/>
       </div>
     );
   }
@@ -288,7 +381,7 @@ export default function PartyLedger() {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={12}><EmptyState message="No assigned lots found" /></td></tr>
+                <tr><td colSpan={14}><EmptyState message="No assigned lots found" /></td></tr>
               ) : filtered.map(l => {
                 // console.log(l, 'l');
                 const pe = partyEdits[l.id] || {};
@@ -313,6 +406,7 @@ export default function PartyLedger() {
                     </td>
                     <td>{getPartyNameLocal(l.partyId, l.partyName)}</td>
                     <td>
+                      {displayStatus === 'Completed' ? <span style={{ fontSize: 12, color: 'green', marginTop: 3, fontWeight: '500', padding: '2px 8px', borderRadius: 6, background: '#DCFCE7', border: '1px solid #DCFCE7' }}>Completed</span>:
                       <select
                         className="form-select"
                         style={{ width: 140, minWidth: 140, fontSize: 12, padding: '5px 8px' }}
@@ -322,18 +416,28 @@ export default function PartyLedger() {
                         <option value="In Progress">In Progress</option>
                         <option value="Completed">Completed</option>
                       </select>
-                      <div style={{ marginTop: 4 }}>
-                        <StatusBadge status={displayStatus} />
-                      </div>
+                      }
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: '#1e40af' }}>
                       ₨{displayBill.toLocaleString()}
                     </td>
                     <td>
-                      {pe.receipt
-                        ? <span style={{ background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0', borderRadius: 6, padding: '2px 8px', fontSize: 11.5, fontWeight: 600 }}>📎 {pe.receipt}</span>
-                        : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>No receipt</span>
-                      }
+                      {pe.receipt ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <ReceiptThumbButton
+                            receipt={pe.receipt}
+                            lotLabel={l.lotNo || l.lotNumber}
+                            onOpen={setReceiptPreview}
+                          />
+                          {receiptPreviewKind(pe.receipt) === 'filename' && (
+                            <span style={{ fontSize: 11, color: 'var(--text-secondary)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pe.receipt}>
+                              {pe.receipt}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>No receipt</span>
+                      )}
                     </td>
                     <td>{pe.notes}</td>
                     <td>
@@ -434,15 +538,47 @@ export default function PartyLedger() {
             </FormGroup>
           </div>
 
-          <FormGroup label="Upload Bill Receipt (filename)">
+          <FormGroup label="Upload Bill Receipt (image or PDF)">
             <input
               className="form-input"
               type="file"
-              accept="image/*,.pdf"
-              onChange={e => setEditForm(f => ({ ...f, receipt: e.target.files[0]?.name || '' }))}
+              accept="image/*,.pdf,application/pdf"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file) {
+                  setEditForm(f => ({ ...f, receipt: '' }));
+                  return;
+                }
+                try {
+                  const stored = await readReceiptAsStoredValue(file);
+                  setEditForm(f => ({ ...f, receipt: stored }));
+                } catch {
+                  setEditForm(f => ({ ...f, receipt: file.name }));
+                }
+              }}
             />
             {editForm.receipt && (
-              <div style={{ fontSize: 12, color: '#15803d', marginTop: 5 }}>📎 {editForm.receipt}</div>
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                {receiptPreviewKind(editForm.receipt) === 'image' && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ padding: 0, border: 'none' }}
+                    onClick={() => setReceiptPreview({ kind: 'image', src: editForm.receipt, title: editingLot?.lotNo || editingLot?.lotNumber })}
+                  >
+                    <img src={editForm.receipt} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+                  </button>
+                )}
+                {receiptPreviewKind(editForm.receipt) === 'pdf' && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReceiptPreview({ kind: 'pdf', src: editForm.receipt, title: editingLot?.lotNo || editingLot?.lotNumber })}>
+                    Preview PDF
+                  </button>
+                )}
+                <span style={{ fontSize: 12, color: '#15803d' }}>
+                  {receiptPreviewKind(editForm.receipt) === 'filename' ? `📎 ${editForm.receipt}` : 'Receipt attached — click thumbnail to enlarge'}
+                </span>
+              </div>
             )}
           </FormGroup>
           <FormGroup label="Notes">
@@ -452,6 +588,43 @@ export default function PartyLedger() {
           {editForm.status === 'Completed' && (
             <div className="alert alert-warning">
               <strong>Note:</strong> Marking as Completed will update the Ghausia lot status to "Received Back".
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {receiptPreview && (
+        <Modal
+          title={receiptPreview.title ? `Receipt — ${receiptPreview.title}` : 'Receipt'}
+          wide
+          onClose={() => setReceiptPreview(null)}
+        >
+          {receiptPreview.kind === 'image' && (
+            <img
+              src={receiptPreview.src}
+              alt="Receipt"
+              style={{ maxWidth: '100%', maxHeight: '78vh', width: 'auto', height: 'auto', display: 'block', margin: '0 auto', borderRadius: 8 }}
+            />
+          )}
+          {receiptPreview.kind === 'pdf' && (
+            <iframe
+              title="Receipt PDF"
+              src={receiptPreview.src}
+              style={{ width: '100%', height: '78vh', border: 'none', borderRadius: 8, background: '#f9fafb' }}
+            />
+          )}
+          {receiptPreview.kind === 'url' && (
+            <img
+              src={receiptPreview.src}
+              alt="Receipt"
+              style={{ maxWidth: '100%', maxHeight: '78vh', display: 'block', margin: '0 auto', borderRadius: 8 }}
+            />
+          )}
+          {receiptPreview.kind === 'filename' && (
+            <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 14 }}>
+              <p style={{ margin: '0 0 12px' }}>No image preview for filename-only receipts.</p>
+              <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)' }}>{receiptPreview.name}</p>
+              <p style={{ margin: '16px 0 0', fontSize: 13 }}>Edit this lot and upload an image or PDF again to store a preview.</p>
             </div>
           )}
         </Modal>
