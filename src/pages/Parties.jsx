@@ -73,6 +73,7 @@ function PartyStatTile({ label, count, amountStr, accent, borderTint, bgTint }) 
 
 export default function Parties() {
   const { parties, addParty, updateParty, deleteParty, ghausiaLots, getPartyName, partyEdits, payments, initialDataLoading } = useApp();
+  const PAGE_SIZE = 8;
   const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -80,11 +81,26 @@ export default function Parties() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [transactionParty, setTransactionParty] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const filtered = parties.filter(p => {
     const q = search.toLowerCase();
     return !q || p.name.toLowerCase().includes(q) || p.phone?.toLowerCase().includes(q) || p.address?.toLowerCase().includes(q);
   });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStart = (safeCurrentPage - 1) * PAGE_SIZE;
+  const paginatedParties = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   /** Align with Party Ledger: "received back" counts as completed for party stats. */
   const lotStatusKey = (l) => {
@@ -228,9 +244,9 @@ export default function Parties() {
         <EmptyState message="No parties found" />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
-          {filtered.map((party, idx) => {
+          {paginatedParties.map((party, idx) => {
             const stats = getLotStats(party.id);
-            const [bg, text] = avatarColors[idx % avatarColors.length];
+            const [bg, text] = avatarColors[(pageStart + idx) % avatarColors.length];
             return (
               <div key={party.id} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, boxShadow: 'var(--shadow)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 {/* Header */}
@@ -335,6 +351,24 @@ export default function Parties() {
               </div>
             );
           })}
+        </div>
+      )}
+      {filtered.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            Showing {pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={safeCurrentPage === 1}>
+              Prev
+            </button>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              Page {safeCurrentPage} of {totalPages}
+            </span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={safeCurrentPage === totalPages}>
+              Next
+            </button>
+          </div>
         </div>
       )}
 
