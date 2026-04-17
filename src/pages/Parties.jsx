@@ -50,8 +50,30 @@ function PartyForm({ initial, onSave, onClose, saving }) {
   );
 }
 
+function PartyStatTile({ label, count, amountStr, accent, borderTint, bgTint }) {
+  return (
+    <div
+      style={{
+        background: bgTint,
+        border: `1px solid ${borderTint}`,
+        borderRadius: 12,
+        padding: '12px 14px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+        minHeight: 86,
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: accent, lineHeight: 1.1 }}>{count}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: accent, opacity: 0.9 }}>{amountStr}</div>
+    </div>
+  );
+}
+
 export default function Parties() {
   const { parties, addParty, updateParty, deleteParty, ghausiaLots, getPartyName, partyEdits, payments, initialDataLoading } = useApp();
+  const PAGE_SIZE = 8;
   const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -59,11 +81,26 @@ export default function Parties() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [transactionParty, setTransactionParty] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const filtered = parties.filter(p => {
     const q = search.toLowerCase();
     return !q || p.name.toLowerCase().includes(q) || p.phone?.toLowerCase().includes(q) || p.address?.toLowerCase().includes(q);
   });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStart = (safeCurrentPage - 1) * PAGE_SIZE;
+  const paginatedParties = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   /** Align with Party Ledger: "received back" counts as completed for party stats. */
   const lotStatusKey = (l) => {
@@ -73,14 +110,23 @@ export default function Parties() {
     return raw;
   };
 
+  const lotBillAmount = (l) => {
+    const pe = partyEdits[l.id] || {};
+    return Number(pe.partyBillAmount !== undefined ? pe.partyBillAmount : (l.billAmount || 0));
+  };
+
   const getLotStats = (partyId) => {
     const pid = String(partyId ?? '');
     const lots = ghausiaLots.filter(l => String(l.partyId ?? '') === pid);
     const partyName = getPartyName(partyId);
-    const totalPayable = lots.reduce((s, l) => {
-      const pe = partyEdits[l.id] || {};
-      return s + Number(pe.partyBillAmount !== undefined ? pe.partyBillAmount : (l.billAmount || 0));
-    }, 0);
+    let activeAmount = 0;
+    let completedAmount = 0;
+    for (const l of lots) {
+      const amt = lotBillAmount(l);
+      if (lotStatusKey(l) === 'completed') completedAmount += amt;
+      else activeAmount += amt;
+    }
+    const totalPayable = lots.reduce((s, l) => s + lotBillAmount(l), 0);
     const totalPaid = payments.filter(p => {
       if (p.type !== 'Paid') return false;
       if (p.partyId != null && String(p.partyId).trim() !== '') {
@@ -94,7 +140,10 @@ export default function Parties() {
       total: lots.length,
       active: lots.filter(l => lotStatusKey(l) !== 'completed').length,
       completed: lots.filter(l => lotStatusKey(l) === 'completed').length,
+      activeAmount,
+      completedAmount,
       totalValue: totalPayable,
+      paid: totalPaid,
       remaining,
     };
   };
@@ -145,6 +194,8 @@ export default function Parties() {
     ['#F5F3FF', '#6d28d9'], ['#FEF2F2', '#991B1B'], ['#F0F9FF', '#075985'],
   ];
 
+  const formatMoney = (n) => `₨${Number(n).toLocaleString()}`;
+
   return (
     <div>
       <div className="page-header">
@@ -192,28 +243,35 @@ export default function Parties() {
       {filtered.length === 0 ? (
         <EmptyState message="No parties found" />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-          {filtered.map((party, idx) => {
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+          {paginatedParties.map((party, idx) => {
             const stats = getLotStats(party.id);
-            console.log(stats);
-            const [bg, text] = avatarColors[idx % avatarColors.length];
+            const [bg, text] = avatarColors[(pageStart + idx) % avatarColors.length];
             return (
-              <div key={party.id} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, boxShadow: 'var(--shadow)', overflow: 'hidden', transition: 'box-shadow 0.15s' }}>
+              <div key={party.id} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, boxShadow: 'var(--shadow)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 {/* Header */}
-                <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid #F3F4F6' }}>
+                <div style={{ padding: '18px 18px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
                     <div style={{
-                      width: 46, height: 46, borderRadius: '50%', background: bg,
+                      width: 48, height: 48, borderRadius: '50%', background: bg,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 16, fontWeight: 700, color: text, flexShrink: 0,
                       border: `2px solid ${text}30`,
                     }}>
                       {initials(party.name)}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)', marginBottom: 2 }}>{party.name}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                        <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text-primary)', lineHeight: 1.25 }}>{party.name}</div>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, color: '#1e40af', background: '#EFF6FF',
+                          border: '1px solid #BFDBFE', borderRadius: 999, padding: '4px 10px', whiteSpace: 'nowrap',
+                        }}>
+                          {stats.total} lot{stats.total === 1 ? '' : 's'}
+                        </span>
+                      </div>
                       {party.phone && (
-                        <div style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <div style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 5, marginTop: 6 }}>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
                           </svg>
@@ -221,36 +279,56 @@ export default function Parties() {
                         </div>
                       )}
                       {party.address && (
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginTop: 1, flexShrink: 0 }}>
                             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
                             <circle cx="12" cy="10" r="3"/>
                           </svg>
-                          {party.address}
+                          <span style={{ lineHeight: 1.4 }}>{party.address}</span>
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Stats */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', padding: '12px 16px', gap: 4 }}>
-                  {[
-                    { label: 'Lots', value: stats.total, color: '#1e40af' },
-                    { label: 'Active', value: stats.active, color: '#d97706' },
-                    { label: 'Done', value: stats.completed, color: '#15803d' },
-                    { label: 'Total', value: stats.total > 0 ? `₨${stats.totalValue}` : '—', color: '#7c3aed' },
-                    { label: 'Remaining', value: stats.remaining, color: '#dc2626'},
-                  ].map(s => (
-                    <div key={s.label} style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: s.color }}>{s.value}</div>
-                      <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</div>
+                {/* Stats: 2×2 layout */}
+                <div style={{ padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <PartyStatTile
+                      label="Active"
+                      count={stats.active}
+                      amountStr={stats.active > 0 ? formatMoney(stats.activeAmount) : '—'}
+                      accent="#c2410c"
+                      borderTint="#FDBA74"
+                      bgTint="#FFFBEB"
+                    />
+                    <PartyStatTile
+                      label="Completed"
+                      count={stats.completed}
+                      amountStr={stats.completed > 0 ? formatMoney(stats.completedAmount) : '—'}
+                      accent="#166534"
+                      borderTint="#86EFAC"
+                      bgTint="#F0FDF4"
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+                    <div style={{ background: '#FAF5FF', border: '1px solid #E9D5FF', borderRadius: 12, padding: '10px 12px', minWidth: 0 }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total bill</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#6d28d9', marginTop: 6, lineHeight: 1.2, wordBreak: 'break-word' }}>{stats.total > 0 ? formatMoney(stats.totalValue) : '—'}</div>
                     </div>
-                  ))}
+                    <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12, padding: '10px 12px', minWidth: 0 }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Paid</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#047857', marginTop: 6, lineHeight: 1.2, wordBreak: 'break-word' }}>{formatMoney(stats.paid)}</div>
+                    </div>
+                    <div style={{ background:`${stats.remaining >= 0 ? '#FEF2F2': 'rgb(189, 248, 212)' }`, border: '1px solidrgb(202, 254, 223)', borderRadius: 12, padding: '10px 12px', minWidth: 0 }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{stats.remaining >= 0 ? 'Remaining' : 'Advance'}</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: stats.remaining >= 0 ? '#b91c1c' : '#047857', marginTop: 6, lineHeight: 1.2, wordBreak: 'break-word' }}>{formatMoney(stats.remaining)}</div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Actions */}
-                <div style={{ display: 'flex', gap: 8, padding: '10px 16px 14px' }}>
+                <div style={{ display: 'flex', gap: 8, padding: '12px 14px 14px', marginTop: 'auto', borderTop: '1px solid #F3F4F6' }}>
                   <button
                     onClick={() => setTransactionParty(party)}
                     style={{ flex: 1, padding: '7px', fontSize: 13, fontWeight: 500, borderRadius: 8, cursor: 'pointer', background: '#F0F9FF', color: '#0369a1', border: '1px solid #BAE6FD', fontFamily: 'Inter, sans-serif' }}
@@ -273,6 +351,24 @@ export default function Parties() {
               </div>
             );
           })}
+        </div>
+      )}
+      {filtered.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            Showing {pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={safeCurrentPage === 1}>
+              Prev
+            </button>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              Page {safeCurrentPage} of {totalPages}
+            </span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={safeCurrentPage === totalPages}>
+              Next
+            </button>
+          </div>
         </div>
       )}
 

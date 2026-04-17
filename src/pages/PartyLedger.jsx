@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, StatusBadge, SearchBar, EmptyState } from '../components/UI';
 import Loader from '../components/Loader';
@@ -108,6 +108,7 @@ function ReceiptThumbButton({ receipt, lotLabel, onOpen }) {
 
 export default function PartyLedger() {
   const { ghausiaLots, updateLot, partyEdits, updatePartyEdit, parties, initialDataLoading } = useApp();
+  const PAGE_SIZE = 10;
   const [search, setSearch] = useState('');
   const [partyFilter, setPartyFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -116,6 +117,7 @@ export default function PartyLedger() {
   const [ledgerSaving, setLedgerSaving] = useState(false);
   const [ledgerFormErrors, setLedgerFormErrors] = useState({});
   const [receiptPreview, setReceiptPreview] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Only lots assigned to a party
   const assignedLots = useMemo(() =>
@@ -172,6 +174,20 @@ export default function PartyLedger() {
     const matchS = statusFilter === 'All' || displayStatus === statusFilter;
     return matchQ && matchP && matchS;
   }), [assignedLots, search, partyFilter, statusFilter, partyEdits]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStart = (safeCurrentPage - 1) * PAGE_SIZE;
+  const paginatedLots = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, partyFilter, statusFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const openEdit = (lot, initialStatus) => {
     const pe = partyEdits[lot.id] || {};
@@ -382,7 +398,7 @@ export default function PartyLedger() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr><td colSpan={14}><EmptyState message="No assigned lots found" /></td></tr>
-              ) : filtered.map(l => {
+              ) : paginatedLots.map(l => {
                 // console.log(l, 'l');
                 const pe = partyEdits[l.id] || {};
                 const displayStatus = getDisplayStatus(l);
@@ -455,6 +471,24 @@ export default function PartyLedger() {
           </table>
         </div>
       </div>
+      {filtered.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            Showing {pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={safeCurrentPage === 1}>
+              Prev
+            </button>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              Page {safeCurrentPage} of {totalPages}
+            </span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={safeCurrentPage === totalPages}>
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Edit Modal */}
       {editingId && editingLot && (
