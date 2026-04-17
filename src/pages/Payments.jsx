@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, EmptyState } from '../components/UI';
@@ -33,16 +33,33 @@ const paymentToast = (icon, title) => {
 
 export default function Payments() {
   const { payments, addPayment, deletePayment, ghausiaLots, parties, initialDataLoading } = useApp();
+  const PAGE_SIZE = 10;
   const [modal, setModal] = useState(false);
   const [typeFilter, setTypeFilter] = useState('All');
   const [form, setForm] = useState({ type: 'Received', amount: '', party: 'Owner', date: '', note: '', linkedLot: '' });
   const [errors, setErrors] = useState({});
   const [paymentSaving, setPaymentSaving] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const filtered = useMemo(() =>
     payments.filter(p => typeFilter === 'All' || p.type === typeFilter),
     [payments, typeFilter]
   );
+  const sortedFiltered = useMemo(() => [...filtered].reverse(), [filtered]);
+  const totalPages = Math.max(1, Math.ceil(sortedFiltered.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStart = (safeCurrentPage - 1) * PAGE_SIZE;
+  const paginatedPayments = sortedFiltered.slice(pageStart, pageStart + PAGE_SIZE);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [typeFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const usedReceivedLotKeys = useMemo(() => new Set(
     payments
@@ -230,9 +247,9 @@ export default function Payments() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr><td colSpan={8}><EmptyState message="No payment records found" /></td></tr>
-              ) : [...filtered].reverse().map((p, i) => (
+              ) : paginatedPayments.map((p, i) => (
                 <tr key={p.id}>
-                  <td style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{filtered.length - i}</td>
+                  <td style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{filtered.length - (pageStart + i)}</td>
                   <td>{p.date}</td>
                   <td>
                     <span style={{
@@ -269,6 +286,24 @@ export default function Payments() {
           </table>
         </div>
       </div>
+      {filtered.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            Showing {pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={safeCurrentPage === 1}>
+              Prev
+            </button>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              Page {safeCurrentPage} of {totalPages}
+            </span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={safeCurrentPage === totalPages}>
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Add Payment Modal */}
       {modal && (

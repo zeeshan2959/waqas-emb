@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import { useApp } from '../context/AppContext';
 import { Modal, FormGroup, StatusBadge, ActionBtn, SearchBar, EmptyState, ConfirmDialog } from '../components/UI';
@@ -191,6 +191,7 @@ function LotForm({ initial, onSave, onClose, parties, saving }) {
 
 export default function GhausiaCollection() {
   const { ghausiaLots, addLot, updateLot, deleteLot, parties, getPartyName, payments, addPayment, deletePayment, updatePartyEdit, initialDataLoading } = useApp();
+  const PAGE_SIZE = 10;
   const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -208,6 +209,7 @@ export default function GhausiaCollection() {
   const [completeBillError, setCompleteBillError] = useState('');
   const completeBillResolveRef = useRef(null);
   const [billableCompletingId, setBillableCompletingId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const statusMeta = {
     'pending': { className: 'badge badge-pending', label: 'Pending' },
@@ -352,6 +354,20 @@ export default function GhausiaCollection() {
     if (l.status === 'completed') return false;
     return statusFilter === 'All' || l.status === statusFilter;
   }), [ghausiaLots, search, statusFilter, lotTableTab]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStart = (safeCurrentPage - 1) * PAGE_SIZE;
+  const paginatedLots = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, lotTableTab]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const completedLotsCount = useMemo(
     () => ghausiaLots.filter((l) => l.status === 'completed').length,
@@ -726,7 +742,7 @@ export default function GhausiaCollection() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr><td colSpan={11}><EmptyState message="No lots found" /></td></tr>
-              ) : filtered.map(l => (
+              ) : paginatedLots.map(l => (
                 <tr key={l.id}>
                   <td style={{ fontWeight: 700, color: '#1e40af' }}>{l.lotNumber}</td>
                   <td style={{ fontWeight: 600 }}>{l.designNo}</td>
@@ -782,6 +798,24 @@ export default function GhausiaCollection() {
           </table>
         </div>
       </div>
+      {filtered.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            Showing {pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={safeCurrentPage === 1}>
+              Prev
+            </button>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              Page {safeCurrentPage} of {totalPages}
+            </span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={safeCurrentPage === totalPages}>
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Lot Form Modal */}
       {modal === 'form' && (
