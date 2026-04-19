@@ -36,6 +36,29 @@ function hasPositiveBillAmount(lot) {
   return Number(lot?.billAmount || 0) > 0;
 }
 
+/** Newest lots first (page 1, top = latest). Uses dates on the lot, then id. */
+function lotRecencyTimestamp(l) {
+  const keys = [l.updatedAt, l.createdAt, l.receivedBackDate, l.dispatchDate, l.allotDate];
+  let max = 0;
+  for (const v of keys) {
+    const t = v ? new Date(v).getTime() : NaN;
+    if (!Number.isNaN(t) && t > max) max = t;
+  }
+  if (max === 0) {
+    const id = String(l.id || '');
+    if (id.length === 24 && /^[a-f0-9]{24}$/i.test(id)) {
+      max = parseInt(id.slice(0, 8), 16) * 1000;
+    }
+  }
+  return max;
+}
+
+function compareLotsNewestFirst(a, b) {
+  const d = lotRecencyTimestamp(b) - lotRecencyTimestamp(a);
+  if (d !== 0) return d;
+  return String(b.id || '').localeCompare(String(a.id || ''));
+}
+
 const newDate = new Date().toISOString().split('T')[0];
 
 function LotForm({ initial, onSave, onClose, parties, saving }) {
@@ -208,7 +231,8 @@ export default function GhausiaCollection() {
   const [completeBillInput, setCompleteBillInput] = useState('');
   const [completeBillError, setCompleteBillError] = useState('');
   const completeBillResolveRef = useRef(null);
-  const [billableCompletingId, setBillableCompletingId] = useState(null);
+  const [completionPersistingLotId, setCompletionPersistingLotId] = useState(null);
+  const [inlineSummaryBusy, setInlineSummaryBusy] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
   const statusMeta = {
@@ -250,50 +274,58 @@ export default function GhausiaCollection() {
     setCompleteBillModal({ lot, fromBillable: !!options.fromBillable });
   });
 
-  const persistLotCompletedWithPayment = async (lot, billAmount) => {
-    const today = new Date().toISOString().slice(0, 10);
-    const lotUpdate = {
-      status: 'completed',
-      receivedBackDate: today,
-      billAmount,
-    };
+  const persistLotCompletedWithPayment = async (lot, billAmount, options = {}) => {
+    const { fromBillable = false } = options;
+    setCompletionPersistingLotId(lot.id);
     try {
-      await updateLot(lot.id, lotUpdate);
-    } catch (e) {
-      Swal.fire({ icon: 'error', title: 'Could not update lot', text: 'Please try again.' });
-      return;
-    }
-    try {
-      await updatePartyEdit(lot.id, {
-        overrideStatus: 'Completed',
-        completeDate: today,
-      });
-    } catch (e) {
-      console.error(e);
-    }
-    try {
-      await recordOwnerReceivedForCompletedLot({ ...lot, ...lotUpdate }, billAmount, today);
-    } catch (e) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Lot updated; payment failed',
-        text: 'The lot was marked completed with a bill amount, but saving the owner payment failed. Add it manually from Payment Management if needed.',
-      });
-    }
-    if (statusFilter !== 'All' && statusFilter !== 'completed') {
-      setStatusFilter('All');
+      const today = new Date().toISOString().slice(0, 10);
+      const lotUpdate = {
+        status: 'completed',
+        receivedBackDate: today,
+        billAmount,
+        ...(fromBillable ? { completedFromBillable: false } : {}),
+      };
+      try {
+        await updateLot(lot.id, lotUpdate);
+      } catch (e) {
+        Swal.fire({ icon: 'error', title: 'Could not update lot', text: 'Please try again.' });
+        return;
+      }
+      try {
+        await updatePartyEdit(lot.id, {
+          overrideStatus: 'Completed',
+          completeDate: today,
+        });
+      } catch (e) {
+        console.error(e);
+      }
+      try {
+        if (fromBillable) {
+          await recordOwnerBillableSettlementPayment({ ...lot, ...lotUpdate }, billAmount, today);
+        } else {
+          await recordOwnerReceivedForCompletedLot({ ...lot, ...lotUpdate }, billAmount, today);
+        }
+      } catch (e) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'Lot updated; payment failed',
+          text: fromBillable
+            ? 'The lot was marked completed, but saving the settlement payment failed. Add a Paid → Owner entry from Payment Management if needed.'
+            : 'The lot was marked completed with a bill amount, but saving the owner payment failed. Add it manually from Payment Management if needed.',
+        });
+      }
+      if (statusFilter !== 'All' && statusFilter !== 'completed') {
+        setStatusFilter('All');
+      }
+    } finally {
+      setCompletionPersistingLotId(null);
     }
   };
 
   const handleCompleteFromBillable = async (lot) => {
     const amount = await promptBillAmountForCompletion(lot, { fromBillable: true });
     if (amount == null) return;
-    setBillableCompletingId(lot.id);
-    try {
-      await persistLotCompletedWithPayment(lot, amount);
-    } finally {
-      setBillableCompletingId(null);
-    }
+    await persistLotCompletedWithPayment(lot, amount, { fromBillable: true });
   };
 
   const recordOwnerReceivedForCompletedLot = async (lotRef, amount, paymentDate) => {
@@ -310,6 +342,21 @@ export default function GhausiaCollection() {
     });
   };
 
+  /** Settlement for billable lots: records Paid → Owner so it appears in Payment Management and reduces Owner Received net. */
+  const recordOwnerBillableSettlementPayment = async (lotRef, amount, paymentDate) => {
+    const linkedLot = String(lotRef.lotNumber || lotRef.lotNo || '').trim();
+    const partyName = (lotRef.partyName && String(lotRef.partyName).trim()) || (lotRef.partyId ? getPartyName(lotRef.partyId) : '') || '';
+    const designNo = String(lotRef.designNo || '').trim() || '—';
+    await addPayment({
+      type: 'Paid',
+      amount: Number(amount),
+      party: 'Owner',
+      date: paymentDate,
+      linkedLot,
+      note: `Billable lot settled — Party: ${partyName || '—'}; Design: ${designNo}; Type: ${lotRef.itemType || lotRef.fabric || '—'}`,
+    });
+  };
+
   const setLotStatus = async (lot, newStatus) => {
     if (newStatus === 'completed') {
       const amount = await promptBillAmountForCompletion(lot);
@@ -318,42 +365,50 @@ export default function GhausiaCollection() {
       return;
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const lotUpdate = { status: newStatus };
-    if (newStatus === 'dispatched') lotUpdate.dispatchDate = today;
-    if (newStatus === 'received back') lotUpdate.receivedBackDate = today;
-
+    setInlineSummaryBusy(true);
     try {
-      await updateLot(lot.id, lotUpdate);
-    } catch (e) {
-      Swal.fire({ icon: 'error', title: 'Could not update lot', text: 'Please try again.' });
-      return;
-    }
+      const today = new Date().toISOString().slice(0, 10);
+      const lotUpdate = { status: newStatus };
+      if (newStatus === 'dispatched') lotUpdate.dispatchDate = today;
+      if (newStatus === 'received back') lotUpdate.receivedBackDate = today;
 
-    const ledgerStatus = newStatus === 'dispatched' ? 'In Progress' : newStatus;
-    try {
-      await updatePartyEdit(lot.id, {
-        overrideStatus: ledgerStatus,
-        completeDate: '',
-      });
-    } catch (e) {
-      console.error(e);
-    }
+      try {
+        await updateLot(lot.id, lotUpdate);
+      } catch (e) {
+        Swal.fire({ icon: 'error', title: 'Could not update lot', text: 'Please try again.' });
+        return;
+      }
 
-    if (statusFilter !== 'All' && newStatus !== statusFilter) {
-      setStatusFilter('All');
+      const ledgerStatus = newStatus === 'dispatched' ? 'In Progress' : newStatus;
+      try {
+        await updatePartyEdit(lot.id, {
+          overrideStatus: ledgerStatus,
+          completeDate: '',
+        });
+      } catch (e) {
+        console.error(e);
+      }
+
+      if (statusFilter !== 'All' && newStatus !== statusFilter) {
+        setStatusFilter('All');
+      }
+    } finally {
+      setInlineSummaryBusy(false);
     }
   };
 
-  const filtered = useMemo(() => ghausiaLots.filter((l) => {
-    const q = search.toLowerCase();
-    const lotLabel = (l.lotNumber || l.lotNo || '').toLowerCase();
-    const matchQ = !q || lotLabel.includes(q) || l.designNo.toLowerCase().includes(q) || l.description.toLowerCase().includes(q);
-    if (!matchQ) return false;
-    if (lotTableTab === 'completed') return l.status === 'completed';
-    if (l.status === 'completed') return false;
-    return statusFilter === 'All' || l.status === statusFilter;
-  }), [ghausiaLots, search, statusFilter, lotTableTab]);
+  const filtered = useMemo(() => {
+    const list = ghausiaLots.filter((l) => {
+      const q = search.toLowerCase();
+      const lotLabel = (l.lotNumber || l.lotNo || '').toLowerCase();
+      const matchQ = !q || lotLabel.includes(q) || l.designNo.toLowerCase().includes(q) || l.description.toLowerCase().includes(q);
+      if (!matchQ) return false;
+      if (lotTableTab === 'completed') return l.status === 'completed';
+      if (l.status === 'completed') return false;
+      return statusFilter === 'All' || l.status === statusFilter;
+    });
+    return [...list].sort(compareLotsNewestFirst);
+  }, [ghausiaLots, search, statusFilter, lotTableTab]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const pageStart = (safeCurrentPage - 1) * PAGE_SIZE;
@@ -375,10 +430,26 @@ export default function GhausiaCollection() {
   );
   const otherLotsCount = ghausiaLots.length - completedLotsCount;
 
-  const billable = ghausiaLots.filter(l => l.status === 'received back');
+  const billable = useMemo(
+    () => [...ghausiaLots.filter((l) => l.status === 'received back')].sort(compareLotsNewestFirst),
+    [ghausiaLots],
+  );
   const billableTotal = billable.reduce((s, l) => s + Number(l.billAmount || 0), 0);
   const ownerIn = payments.filter(p => p.type === 'Received').reduce((s, p) => s + p.amount, 0);
+  const ownerPaidToOwner = payments
+    .filter((p) => p.type === 'Paid' && p.party === 'Owner')
+    .reduce((s, p) => s + p.amount, 0);
+  const billableSettledTotal = useMemo(
+    () => ghausiaLots
+      .filter((l) => l.status === 'completed' && l.completedFromBillable)
+      .reduce((s, l) => s + Number(l.billAmount || 0), 0),
+    [ghausiaLots],
+  );
+  const ownerReceivedNet = ownerIn - ownerPaidToOwner - billableSettledTotal;
+  const ownerReceivedIsPending = ownerReceivedNet < 0;
   const partyOut = payments.filter(p => p.type === 'Paid').reduce((s, p) => s + p.amount, 0);
+  const statsRefreshing = lotSaving || paymentSaving || deleteLoading
+    || completionPersistingLotId != null || inlineSummaryBusy;
 
   const openEdit = (lot) => { setEditing(lot); setModal('form'); };
   const openAdd = () => { setEditing(null); setModal('form'); };
@@ -460,19 +531,24 @@ export default function GhausiaCollection() {
   };
 
   const handlePartyChange = async (lotId, partyId) => {
-    const currentDate = new Date().toISOString().slice(0, 10);
-    const selectedParty = parties.find(p => p.id === partyId);
-    await updateLot(lotId, {
-      partyId: partyId || '',
-      partyName: selectedParty ? selectedParty.name : '',
-      status: partyId ? 'dispatched' : 'pending',
-      dispatchDate: partyId ? currentDate : '',
-    });
-    if (partyId) {
-      await updatePartyEdit(lotId, {
-        overrideStatus: 'In Progress',
-        allotDate: currentDate,
+    setInlineSummaryBusy(true);
+    try {
+      const currentDate = new Date().toISOString().slice(0, 10);
+      const selectedParty = parties.find(p => p.id === partyId);
+      await updateLot(lotId, {
+        partyId: partyId || '',
+        partyName: selectedParty ? selectedParty.name : '',
+        status: partyId ? 'dispatched' : 'pending',
+        dispatchDate: partyId ? currentDate : '',
       });
+      if (partyId) {
+        await updatePartyEdit(lotId, {
+          overrideStatus: 'In Progress',
+          allotDate: currentDate,
+        });
+      }
+    } finally {
+      setInlineSummaryBusy(false);
     }
   };
 
@@ -544,20 +620,47 @@ export default function GhausiaCollection() {
       </div>
 
       {/* Summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 22 }}>
-        {[
-          { label: 'Total Lots', value: ghausiaLots.length, color: '#1e40af' },
-          { label: 'Billable Lots', value: billable.length, color: '#dc2626' },
-          { label: 'Billable Amount', value: `₨${billableTotal.toLocaleString()}`, color: '#dc2626' },
-          { label: 'Owner Received', value: `₨${ownerIn.toLocaleString()}`, color: '#15803d' },
-          { label: 'Party Paid', value: `₨${partyOut.toLocaleString()}`, color: '#7c3aed' },
-          { label: 'Net Balance', value: `₨${(ownerIn - partyOut).toLocaleString()}`, color: (ownerIn - partyOut) >= 0 ? '#15803d' : '#dc2626' },
-        ].map(c => (
-          <div key={c.label} className="stat-card">
-            <div className="stat-label">{c.label}</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: c.color }}>{c.value}</div>
+      <div style={{ position: 'relative', marginBottom: 22 }}>
+        {statsRefreshing && (
+          <div
+            aria-busy="true"
+            aria-live="polite"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              background: 'rgba(255, 255, 255, 0.72)',
+              backdropFilter: 'blur(2px)',
+              borderRadius: 12,
+              pointerEvents: 'none',
+            }}
+          >
+            <Loader />
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Updating…</span>
           </div>
-        ))}
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+          {[
+            { label: 'Total Lots', value: ghausiaLots.length, color: '#1e40af' },
+            { label: 'Billable Lots', value: billable.length, color: '#dc2626' },
+            { label: 'Billable Amount', value: `₨${billableTotal.toLocaleString()}`, color: '#dc2626' },
+            {
+              label: 'Owner Received',
+              value: ownerReceivedIsPending ? 'Pending to owner' : `₨${ownerReceivedNet.toLocaleString()}`,
+              color: ownerReceivedIsPending ? '#d97706' : '#15803d',
+            },
+            { label: 'Payable from owner', value: `₨${(billableTotal - (ownerReceivedNet)).toLocaleString()}`, color: (billableTotal - (ownerReceivedNet)) >= 0 ? '#15803d' : '#dc2626' },
+          ].map(c => (
+            <div key={c.label} className="stat-card">
+              <div className="stat-label">{c.label}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: c.color }}>{c.value}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Payment Panel */}
@@ -637,12 +740,12 @@ export default function GhausiaCollection() {
                   <strong style={{ color: '#92600A' }}>₨{Number(l.billAmount || 0).toLocaleString()}</strong>
                   <button
                     type="button"
-                    className="btn btn-success btn-sm"
-                    disabled={billableCompletingId === l.id}
+                    className="responsive-btn"
+                    disabled={completionPersistingLotId === l.id}
                     onClick={() => handleCompleteFromBillable(l)}
                     style={{ whiteSpace: 'nowrap' }}
                   >
-                    {billableCompletingId === l.id ? (
+                    {completionPersistingLotId === l.id ? (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <Loader /> Completing…
                       </span>
@@ -765,22 +868,22 @@ export default function GhausiaCollection() {
                     </select>
                   </td>
                   <td>
-                    {lotTableTab === 'completed' ? 
-                    <span style={{ fontSize: 12, color: 'green', marginTop: 3, fontWeight: '500', padding: '2px 8px', borderRadius: 6, background: '#DCFCE7', border: '1px solid #DCFCE7' }}>Completed</span>:
-                    <>
-                    <select
-                      className="form-select"
-                      style={{ width: 150, fontSize: 12, padding: '5px 8px' }}
-                      value={l.status}
-                      onChange={(e) => setLotStatus(l, e.target.value)}
-                    >
-                      {STATUS_OPTIONS.map(s => (
-                        <option key={s} value={s}>{s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>
-                      ))}
-                    </select>
-                    {l.dispatchDate && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 3, fontWeight: '500' }}>Dispatch: {l.dispatchDate}</div>}
-                    {l.receivedBackDate && <div style={{ fontSize: 12, color: 'green', marginTop: 1, fontWeight: '500' }}>Received: {l.receivedBackDate}</div>}
-                    </>
+                    {lotTableTab === 'completed' ?
+                      <span style={{ fontSize: 12, color: 'green', marginTop: 3, fontWeight: '500', padding: '2px 8px', borderRadius: 6, background: '#DCFCE7', border: '1px solid #DCFCE7' }}>Completed</span> :
+                      <>
+                        <select
+                          className="form-select"
+                          style={{ width: 150, fontSize: 12, padding: '5px 8px' }}
+                          value={l.status}
+                          onChange={(e) => setLotStatus(l, e.target.value)}
+                        >
+                          {STATUS_OPTIONS.map(s => (
+                            <option key={s} value={s}>{s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>
+                          ))}
+                        </select>
+                        {l.dispatchDate && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 3, fontWeight: '500' }}>Dispatch: {l.dispatchDate}</div>}
+                        {l.receivedBackDate && <div style={{ fontSize: 12, color: 'green', marginTop: 1, fontWeight: '500' }}>Received: {l.receivedBackDate}</div>}
+                      </>
                     }
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: '#1e40af' }}>
@@ -829,6 +932,8 @@ export default function GhausiaCollection() {
         const lot = completeBillModal.lot;
         const fromBillable = !!completeBillModal.fromBillable;
         const rawBill = Number(lot.billAmount || 0);
+        const confirmAmt = Number(completeBillInput);
+        const amountForOwnerCheck = (!Number.isNaN(confirmAmt) && confirmAmt > 0 ? confirmAmt : rawBill);
         const amountBill = rawBill.toLocaleString();
         const lotNo = String(lot.lotNumber || lot.lotNo || '').trim() || '—';
         const designNo = String(lot.designNo || '').trim() || '—';
@@ -843,17 +948,22 @@ export default function GhausiaCollection() {
               <>
                 <button type="button" className="btn btn-ghost" onClick={dismissCompleteBillModal}>Cancel</button>
                 <button type="button" className="btn btn-primary" onClick={confirmCompleteBillModal}>
-                  Complete & record payment
+                  {fromBillable ? 'Complete & settle' : 'Complete & record payment'}
                 </button>
               </>
             )}
           >
             {fromBillable ? (
               <p style={{ textAlign: 'left', fontSize: 13, margin: '0 0 12px', color: 'var(--text-secondary)' }}>
-                Confirm the owner payment for this billable lot. The lot will move to <strong>Completed</strong> and a <strong>Received</strong> entry will be saved — same as choosing Completed in the lots table.
+                Confirm the bill amount for this lot. It will move to <strong>Completed</strong>, the <strong>Owner Received</strong> total will go down by this amount, and a <strong>Paid → Owner</strong> row will be saved in Payment Management (linked to this lot).
                 {rawBill > 0
                   ? <> Current bill: <strong>₨{amountBill}</strong> (edit below if needed).</>
-                  : <> No bill amount on file (₨{amountBill}) — enter the amount received below.</>}
+                  : <> No bill amount on file (₨{amountBill}) — enter the amount below.</>}
+                {amountForOwnerCheck > 0 && ownerReceivedNet < amountForOwnerCheck && (
+                  <span style={{ display: 'block', marginTop: 10, color: '#b45309', fontWeight: 600 }}>
+                    Owner Received (after other settlements) is less than this bill — after completion, Owner Received will show as <strong>Pending to owner</strong> until recorded receipts catch up.
+                  </span>
+                )}
               </p>
             ) : rawBill > 0 ? (
               <p style={{ textAlign: 'left', fontSize: 13, margin: '0 0 12px', color: 'var(--text-secondary)' }}>
@@ -868,6 +978,7 @@ export default function GhausiaCollection() {
               <strong>Lot:</strong> {lotNo} · <strong>Design:</strong> {designNo}
               <br />
               <strong>Party:</strong> {partyLabel}
+              <br />
             </div>
             <FormGroup label={rawBill > 0 ? 'Bill amount (₨) — edit if needed' : 'Amount received (₨) *'}>
               <input
@@ -884,6 +995,7 @@ export default function GhausiaCollection() {
                 <span style={{ color: '#dc2626', fontSize: 11, marginTop: 3, display: 'block' }}>{completeBillError}</span>
               )}
             </FormGroup>
+            <strong>Owner Received:</strong> ₨{ownerReceivedNet.toLocaleString()}
           </Modal>
         );
       })()}

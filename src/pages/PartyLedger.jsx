@@ -15,6 +15,28 @@ const toLedgerStatus = (status) => {
 const toTitleCase = (s) =>
   String(s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
+function lotRecencyTimestamp(l) {
+  const keys = [l.updatedAt, l.createdAt, l.receivedBackDate, l.dispatchDate, l.allotDate];
+  let max = 0;
+  for (const v of keys) {
+    const t = v ? new Date(v).getTime() : NaN;
+    if (!Number.isNaN(t) && t > max) max = t;
+  }
+  if (max === 0) {
+    const id = String(l.id || '');
+    if (id.length === 24 && /^[a-f0-9]{24}$/i.test(id)) {
+      max = parseInt(id.slice(0, 8), 16) * 1000;
+    }
+  }
+  return max;
+}
+
+function compareLotsNewestFirst(a, b) {
+  const d = lotRecencyTimestamp(b) - lotRecencyTimestamp(a);
+  if (d !== 0) return d;
+  return String(b.id || '').localeCompare(String(a.id || ''));
+}
+
 function readReceiptAsStoredValue(file) {
   return new Promise((resolve, reject) => {
     if (!file) {
@@ -107,7 +129,7 @@ function ReceiptThumbButton({ receipt, lotLabel, onOpen }) {
 }
 
 export default function PartyLedger() {
-  const { ghausiaLots, updateLot, partyEdits, updatePartyEdit, parties, initialDataLoading } = useApp();
+  const { ghausiaLots, updateLot, partyEdits, updatePartyEdit, parties, payments, initialDataLoading } = useApp();
   const PAGE_SIZE = 10;
   const [search, setSearch] = useState('');
   const [partyFilter, setPartyFilter] = useState('All');
@@ -163,17 +185,20 @@ export default function PartyLedger() {
   };
 
 
-  const filtered = useMemo(() => assignedLots.filter(l => {
-    const q = search.toLowerCase();
-    const lotLabel = (l.lotNo || l.lotNumber || '').toLowerCase();
-    const matchQ = !q || lotLabel.includes(q)
-      || l.designNo.toLowerCase().includes(q)
-      || l.description.toLowerCase().includes(q);
-    const matchP = partyFilter === 'All' || samePartyId(l.partyId, partyFilter);
-    const displayStatus = getDisplayStatus(l);
-    const matchS = statusFilter === 'All' || displayStatus === statusFilter;
-    return matchQ && matchP && matchS;
-  }), [assignedLots, search, partyFilter, statusFilter, partyEdits]);
+  const filtered = useMemo(() => {
+    const list = assignedLots.filter((l) => {
+      const q = search.toLowerCase();
+      const lotLabel = (l.lotNo || l.lotNumber || '').toLowerCase();
+      const matchQ = !q || lotLabel.includes(q)
+        || l.designNo.toLowerCase().includes(q)
+        || l.description.toLowerCase().includes(q);
+      const matchP = partyFilter === 'All' || samePartyId(l.partyId, partyFilter);
+      const displayStatus = getDisplayStatus(l);
+      const matchS = statusFilter === 'All' || displayStatus === statusFilter;
+      return matchQ && matchP && matchS;
+    });
+    return [...list].sort(compareLotsNewestFirst);
+  }, [assignedLots, search, partyFilter, statusFilter, partyEdits]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const pageStart = (safeCurrentPage - 1) * PAGE_SIZE;
@@ -303,6 +328,35 @@ export default function PartyLedger() {
     };
   }, [filtered, partyEdits]);
 
+  const partyBalanceInfo = useMemo(() => {
+    const pays = payments.filter((p) => p.type === 'Paid');
+    if (partyFilter === 'All') {
+      const names = [...new Set(
+        filtered.map((l) => getPartyNameLocal(l.partyId, l.partyName).trim()).filter((n) => n && n !== '—'),
+      )];
+      let balance = 0;
+      names.forEach((name) => {
+        const billSum = filtered
+          .filter((l) => getPartyNameLocal(l.partyId, l.partyName).trim() === name)
+          .reduce((s, l) => s + getDisplayBill(l), 0);
+        const paidSum = pays
+          .filter((p) => String(p.party || '').trim() === name)
+          .reduce((s, p) => s + Number(p.amount || 0), 0);
+        balance += billSum - paidSum;
+      });
+      return { balance, hint: 'Total balance for all the parties.' };
+    }
+    const party = parties.find((p) => samePartyId(p.id, partyFilter));
+    const pname = (party?.name || '').trim();
+    const paidSum = pays
+      .filter((p) => String(p.party || '').trim() === pname)
+      .reduce((s, p) => s + Number(p.amount || 0), 0);
+    return {
+      balance: totals.billTotal - paidSum,
+      hint: pname ? `${pname}'s balance` : 'Total bill value minus paid to party',
+    };
+  }, [partyFilter, filtered, payments, parties, partyEdits, totals.billTotal]);
+
   const handleRowStatusChange = async (lot, newStatus) => {
     if (newStatus === 'Completed') {
       openEdit(lot, 'Completed');
@@ -339,22 +393,32 @@ export default function PartyLedger() {
       {/* Summary */}
       <div className='pl-grid'>
         {[
-          { label: 'Assigned Lots', value: totals.lots, color: '#1e40af' },
-          { label: 'Total Bill Value', value: `₨${totals.billTotal.toLocaleString()}`, color: '#7c3aed' },
+          { key: 'assigned', label: 'Assigned Lots', value: totals.lots, color: '#1e40af' },
+          { key: 'bill', label: 'Total Bill Value', value: `₨${totals.billTotal.toLocaleString()}`, color: '#7c3aed' },
           {
+            key: 'completed',
             label: <>Completed <strong style={{ fontSize: 14, color: '#15803d' }}>({totals.completed})</strong></>,
             value: `₨${totals.completedAmount.toLocaleString()}`,
             color: '#15803d'
           },
           {
+            key: 'inprogress',
             label: <>In Progress <strong style={{ fontSize: 14, color: '#d97706' }}>({totals.inProgress})</strong></>,
             value: `₨${totals.inProgressAmount.toLocaleString()}`,
             color: '#d97706'
           },
+          {
+            key: 'balance',
+            label: `Party balance ${partyBalanceInfo.balance >= 0 ? '(payable)' : '(advance)'}`,
+            value: `₨${partyBalanceInfo.balance.toLocaleString()}`,
+            color: partyBalanceInfo.balance >= 0 ? '#0f766e' : '#dc2626',
+            sub: partyBalanceInfo.hint,
+          },
         ].map(c => (
-          <div key={c.label} className="stat-card">
+          <div key={c.key} className="stat-card">
             <div className="stat-label">{c.label}</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: c.color }}>{c.value}</div>
+            {c.sub && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.35 }}>{c.sub}</div>}
           </div>
         ))}
       </div>
