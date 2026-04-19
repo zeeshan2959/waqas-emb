@@ -1180,3 +1180,14 @@ tbody tr:last-child td {
 
 
 /* =============================  end Table adjustments =============================================== */
+
+.responsive-btn{
+  padding: 5px 8px;
+  font-size: 12.5px;
+  background-color: #136b32;
+  color: #fff;
+  cursor: pointer;
+  outline: none;
+  border: none;
+  border-radius: 4px;
+}
