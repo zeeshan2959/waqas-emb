@@ -45,7 +45,12 @@ export default function Payments() {
     payments.filter(p => typeFilter === 'All' || p.type === typeFilter),
     [payments, typeFilter]
   );
-  const sortedFiltered = useMemo(() => [...filtered].reverse(), [filtered]);
+  const sortedFiltered = useMemo(() => [...filtered].sort((a, b) => {
+    const da = new Date(a.date || 0).getTime();
+    const db = new Date(b.date || 0).getTime();
+    if (db !== da) return db - da;
+    return String(b.id || '').localeCompare(String(a.id || ''));
+  }), [filtered]);
   const totalPages = Math.max(1, Math.ceil(sortedFiltered.length / PAGE_SIZE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const pageStart = (safeCurrentPage - 1) * PAGE_SIZE;
