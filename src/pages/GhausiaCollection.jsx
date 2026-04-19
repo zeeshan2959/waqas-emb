@@ -740,7 +740,7 @@ export default function GhausiaCollection() {
                   <strong style={{ color: '#92600A' }}>₨{Number(l.billAmount || 0).toLocaleString()}</strong>
                   <button
                     type="button"
-                    className="btn btn-success btn-sm"
+                    className="responsive-btn"
                     disabled={completionPersistingLotId === l.id}
                     onClick={() => handleCompleteFromBillable(l)}
                     style={{ whiteSpace: 'nowrap' }}
