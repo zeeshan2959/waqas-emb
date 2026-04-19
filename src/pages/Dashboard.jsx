@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { StatusBadge } from '../components/UI';
 import LoaderDashboard from '../components/LoaderDashboard';
@@ -53,12 +53,23 @@ export default function Dashboard() {
     { label: 'Active Parties', value: partyStats.length,         color: '#7c3aed', sub: 'With assigned lots' },
   ];
 
+  const paidToNonOwnerParties = useMemo(() => {
+      const sum = payments
+        .filter(
+          (p) =>
+            p.type === "Paid" && String(p.party || "").toLowerCase() !== "owner",
+        )
+        .reduce((s, p) => s + p.amount, 0);
+      console.log("Sum of Paid payments to non-Owner parties:", sum);
+      return sum;
+    }, [payments]);
+
   const finCards = [
     { label: 'Total Lot Value',       value: totalLotValue, color: '#1e40af' },
     { label: 'Billable to Owner',     value: billableTotal, color: '#dc2626', note: `${billable.length} lots` },
     { label: 'Completed Revenue',     value: completedTotal, color: '#15803d' },
     { label: 'Received from Owner',   value: ownerIn,       color: '#0284c7' },
-    { label: 'Paid to Parties',       value: partyOut,      color: '#7c3aed' },
+    { label: 'Paid to Parties',       value: paidToNonOwnerParties,      color: '#7c3aed' },
     { label: 'Owner Balance',         value: balance,       color: balance >= 0 ? '#15803d' : '#dc2626', note: balance >= 0 ? 'Credit' : 'Debit' },
   ];
 

@@ -649,11 +649,11 @@ export default function GhausiaCollection() {
             { label: 'Billable Lots', value: billable.length, color: '#dc2626' },
             { label: 'Billable Amount', value: `₨${billableTotal.toLocaleString()}`, color: '#dc2626' },
             {
-              label: 'Owner Received',
+              label: 'Received from Owner',
               value: ownerReceivedIsPending ? 'Pending to owner' : `₨${ownerReceivedNet.toLocaleString()}`,
               color: ownerReceivedIsPending ? '#d97706' : '#15803d',
             },
-            { label: 'Payable from owner', value: `₨${(billableTotal - (ownerReceivedNet)).toLocaleString()}`, color: (billableTotal - (ownerReceivedNet)) >= 0 ? '#15803d' : '#dc2626' },
+            { label: `${billableTotal - (ownerReceivedNet) >= 0 ? 'Receivable from Owner': 'Advance from Owner'}`, value: `₨${(billableTotal - (ownerReceivedNet)).toLocaleString()}`, color: (billableTotal - (ownerReceivedNet)) >= 0 ? '#15803d' : '#dc2626' },
           ].map(c => (
             <div key={c.label} className="stat-card">
               <div className="stat-label">{c.label}</div>
