@@ -881,7 +881,7 @@ export default function GhausiaCollection() {
                             <option key={s} value={s}>{s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>
                           ))}
                         </select>
-                        {l.dispatchDate && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 3, fontWeight: '500' }}>Dispatch: {l.dispatchDate}</div>}
+                        {l.dispatchDate && l.status !== 'pending' && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 3, fontWeight: '500' }}>Dispatch: {l.dispatchDate}</div>}
                         {l.receivedBackDate && <div style={{ fontSize: 12, color: 'green', marginTop: 1, fontWeight: '500' }}>Received: {l.receivedBackDate}</div>}
                       </>
                     }

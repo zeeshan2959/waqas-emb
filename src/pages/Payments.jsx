@@ -64,8 +64,9 @@ export default function Payments() {
   const sortedFiltered = useMemo(
     () =>
       [...filtered].sort((a, b) => {
-        const da = new Date(a.date || 0).getTime();
-        const db = new Date(b.date || 0).getTime();
+        // Sort by edit date (updatedAt) first if available, then by creation date
+        const da = new Date((a.updatedAt || a.date || 0)).getTime();
+        const db = new Date((b.updatedAt || b.date || 0)).getTime();
         if (db !== da) return db - da;
         return String(b.id || "").localeCompare(String(a.id || ""));
       }),

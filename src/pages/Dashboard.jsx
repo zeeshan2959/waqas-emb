@@ -29,7 +29,30 @@ export default function Dashboard() {
   const partyOut = payments.filter(p => p.type === 'Paid').reduce((s, p) => s + Number(p.amount || 0), 0);
   const balance = ownerIn - partyOut;
 
-  const recentLots = [...ghausiaLots].slice(0, 12);
+  /** Sort lots by recency (newest first) using modification date, then created date, then ID */
+  function lotRecencyTimestamp(l) {
+    const keys = [l.updatedAt, l.createdAt, l.receivedBackDate, l.dispatchDate, l.allotDate];
+    let max = 0;
+    for (const v of keys) {
+      const t = v ? new Date(v).getTime() : NaN;
+      if (!Number.isNaN(t) && t > max) max = t;
+    }
+    if (max === 0) {
+      const id = String(l.id || '');
+      if (id.length === 24 && /^[a-f0-9]{24}$/i.test(id)) {
+        max = parseInt(id.slice(0, 8), 16) * 1000;
+      }
+    }
+    return max;
+  }
+
+  function compareLotsNewestFirst(a, b) {
+    const d = lotRecencyTimestamp(b) - lotRecencyTimestamp(a);
+    if (d !== 0) return d;
+    return String(b.id || '').localeCompare(String(a.id || ''));
+  }
+
+  const recentLots = [...ghausiaLots].sort(compareLotsNewestFirst).slice(0, 12);
 
   const partyStats = parties.map(p => {
     const lots = ghausiaLots.filter(l => String(l.partyId ?? '') === String(p.id ?? ''));
@@ -64,13 +87,15 @@ export default function Dashboard() {
       return sum;
     }, [payments]);
 
+  const profit = completedTotal - paidToNonOwnerParties;
+
   const finCards = [
     { label: 'Total Lot Value',       value: totalLotValue, color: '#1e40af' },
     { label: 'Billable to Owner',     value: billableTotal, color: '#dc2626', note: `${billable.length} lots` },
     { label: 'Completed Revenue',     value: completedTotal, color: '#15803d' },
     { label: 'Received from Owner',   value: ownerIn,       color: '#0284c7' },
     { label: 'Paid to Parties',       value: paidToNonOwnerParties,      color: '#7c3aed' },
-    { label: 'Owner Balance',         value: balance,       color: balance >= 0 ? '#15803d' : '#dc2626', note: balance >= 0 ? 'Credit' : 'Debit' },
+    { label: 'Profit',                value: profit,        color: profit >= 0 ? '#15803d' : '#dc2626', note: profit >= 0 ? 'Gain' : 'Loss' },
   ];
 
   return (
@@ -241,7 +266,12 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {[...payments].reverse().slice(0, 8).map(p => (
+                {[...payments].sort((a, b) => {
+                  const da = new Date(a.date || 0).getTime();
+                  const db = new Date(b.date || 0).getTime();
+                  if (db !== da) return db - da;
+                  return String(b.id || '').localeCompare(String(a.id || ''));
+                }).slice(0, 8).map(p => (
                   <tr key={p.id}>
                     <td>{p.date}</td>
                     <td>

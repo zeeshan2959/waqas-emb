@@ -11,7 +11,9 @@ import Loader from "../components/Loader";
 import LoaderDashboard from "../components/LoaderDashboard";
 
 // From the party's perspective: dispatched = In Progress, received back = Completed
-const toLedgerStatus = (status) => {
+// If party name is unknown, status should be Pending
+const toLedgerStatus = (status, partyName) => {
+  if (!partyName || !String(partyName).trim()) return "Pending";
   if (!status) return "In Progress";
   const s = String(status).trim().toLowerCase();
   if (s === "completed" || s === "received back") return "Completed";
@@ -260,8 +262,9 @@ export default function PartyLedger() {
     // If overrideStatus explicitly set to Completed, honour it
     if (pe.overrideStatus && pe.overrideStatus.toLowerCase() === "completed")
       return "Completed";
-    // Otherwise derive from lot status
-    return toLedgerStatus(pe.overrideStatus || l.status);
+    // Otherwise derive from lot status, passing party name to check if known
+    const partyNameDisplay = getPartyNameLocal(l.partyId, l.partyName);
+    return toLedgerStatus(pe.overrideStatus || l.status, partyNameDisplay !== "—" ? partyNameDisplay : "");
   };
 
   const getPartyNameLocal = (partyId, fallback) =>
