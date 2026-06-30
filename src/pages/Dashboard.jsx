@@ -1,13 +1,139 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { StatusBadge } from '../components/UI';
 import LoaderDashboard from '../components/LoaderDashboard';
+import { DateRangeSelect, isWithinDateRange, latestDateFrom, compareRowsByUpdatedNewestFirst } from '../utils/dateFilters';
+import { workspaceDisplayTitleForLot } from '../utils/businessWorkspace';
+
+function lotBelongsToPartyUser(lot, partyId, partyName) {
+  const pid = String(partyId || '').trim();
+  const pname = String(partyName || '').trim();
+  if (!pid && !pname) return false;
+  if (pid && String(lot.partyId || '').trim() === pid) return true;
+  if (pname && String(lot.partyName || '').trim() === pname) return true;
+  return false;
+}
+
+function paymentBelongsToPartyUser(payment, partyId, partyName) {
+  const pid = String(partyId || '').trim();
+  const pname = String(partyName || '').trim();
+  if (payment.partyId != null && String(payment.partyId).trim() !== '') {
+    return String(payment.partyId) === pid;
+  }
+  return String(payment.party || '').trim() === pname;
+}
 
 const toTitleCase = (s) =>
   String(s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
 export default function Dashboard() {
-  const { ghausiaLots, partyEdits, payments, getPartyName, parties, initialDataLoading } = useApp();
+  const {
+    reportingLots,
+    reportingPayments,
+    parties,
+    initialDataLoading,
+    partyCrossLots,
+    partyCrossPayments,
+    payments,
+    businessOwners,
+  } = useApp();
+  const { isParty, isAdmin, user } = useAuth();
+  const [dateRange, setDateRange] = useState('all');
+  const partyUserId = String(user?.partyId || '');
+  const partyNameTrim = String(user?.partyName || '').trim();
+
+  const lotsPool = useMemo(() => {
+    if (!isParty) return reportingLots;
+    return partyCrossLots.length ? partyCrossLots : reportingLots;
+  }, [isParty, partyCrossLots, reportingLots]);
+
+  const paymentsPool = useMemo(() => {
+    if (!isParty) return reportingPayments;
+    return partyCrossPayments.length ? partyCrossPayments : payments;
+  }, [isParty, partyCrossPayments, reportingPayments, payments]);
+
+  const scopedLots = useMemo(() => {
+    const lots =
+      isParty && (partyUserId || partyNameTrim)
+        ? lotsPool.filter((lot) =>
+            lotBelongsToPartyUser(lot, partyUserId, partyNameTrim),
+          )
+        : lotsPool;
+    return lots.filter((lot) => isWithinDateRange(
+      latestDateFrom(lot, ['updatedAt', 'createdAt', 'receivedBackDate', 'dispatchDate', 'allotDate', 'receivedDate']),
+      dateRange,
+    ));
+  }, [lotsPool, isParty, partyUserId, partyNameTrim, dateRange]);
+
+  const scopedPayments = useMemo(() => {
+    const list =
+      isParty && (partyUserId || partyNameTrim)
+        ? paymentsPool.filter((p) =>
+            paymentBelongsToPartyUser(p, partyUserId, partyNameTrim),
+          )
+        : paymentsPool;
+    return list.filter((payment) => isWithinDateRange(payment.updatedAt || payment.date, dateRange));
+  }, [paymentsPool, isParty, partyUserId, partyNameTrim, dateRange]);
+
+  /** Minimal party dashboard stats (counts + paid total); null for admin views */
+  const partyMiniStatsCards = useMemo(() => {
+    if (!isParty) return null;
+    const by = (s) => scopedLots.filter((l) => l.status === s).length;
+    const paidTotal = scopedPayments
+      .filter((p) => p.type === 'Paid')
+      .reduce((s, p) => s + Number(p.amount || 0), 0);
+    const partyApprovedDone = by('received back') + by('completed');
+    const partyNeedsAttention = by('pending approval') + by('rejected');
+    const partyInProgressRough =
+      by('pending') +
+      by('dispatched') +
+      scopedLots.filter((l) =>
+        String(l.status || '').toLowerCase().trim().includes('in progress'),
+      ).length;
+    return [
+      {
+        label: 'My lots',
+        value: scopedLots.length,
+        color: '#1e40af',
+        sub: 'In selected period',
+      },
+      {
+        label: 'Active work',
+        value: partyInProgressRough,
+        color: '#0284c7',
+        sub: 'Pending + dispatched + in progress',
+      },
+      {
+        label: 'Needs review / rework',
+        value: partyNeedsAttention,
+        color: '#ca8a04',
+        sub: 'Awaiting approval + rejected',
+      },
+      {
+        label: 'Approved finished',
+        value: partyApprovedDone,
+        color: '#15803d',
+        sub: 'Received back + completed',
+      },
+      {
+        label: 'Paid to you',
+        display: `₨${paidTotal.toLocaleString()}`,
+        color: '#166534',
+        sub: 'From business (payments marked Paid)',
+      },
+    ];
+  }, [isParty, scopedLots, scopedPayments]);
+
+  const paidToNonOwnerParties = useMemo(() => {
+    return scopedPayments
+      .filter(
+        (p) =>
+          p.type === 'Paid' && String(p.party || '').toLowerCase() !== 'owner',
+      )
+      .reduce((s, p) => s + Number(p.amount || 0), 0);
+  }, [scopedPayments]);
 
   if (initialDataLoading) {
     return (
@@ -17,22 +143,48 @@ export default function Dashboard() {
     );
   }
 
+  if (!isParty && isAdmin && businessOwners.length === 0) {
+    return (
+      <div>
+        <div className="page-header">
+          <div>
+            <div className="page-title">Dashboard</div>
+            <div className="page-subtitle">
+              Add a business workspace first — new accounts start with an empty list.
+            </div>
+          </div>
+        </div>
+        <div className="stat-card" style={{ maxWidth: 520 }}>
+          <div className="stat-label">No workspaces yet</div>
+          <p style={{ margin: '12px 0', color: 'var(--text-secondary, #64748b)' }}>
+            Open <strong>Work Spaces</strong> and use <strong>+ New workspace</strong> to create your Ghausia collection (or any name you use for production).
+          </p>
+          <Link className="btn btn-primary" to="/ghausia" style={{ display: 'inline-flex', textDecoration: 'none' }}>
+            Go to Work Spaces
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   // Lots use lowercase status: 'pending', 'dispatched', 'received back', 'completed'
-  const byStatus = (s) => ghausiaLots.filter(l => l.status === s).length;
+  const byStatus = (s) => scopedLots.filter(l => l.status === s).length;
 
-  const billable = ghausiaLots.filter(l => l.status === 'received back');
+  const billable = scopedLots.filter(l => l.status === 'received back');
   const billableTotal = billable.reduce((s, l) => s + Number(l.billAmount || 0), 0);
-  const completedTotal = ghausiaLots.filter(l => l.status === 'completed').reduce((s, l) => s + Number(l.billAmount || 0), 0);
-  const totalLotValue = ghausiaLots.reduce((s, l) => s + Number(l.billAmount || 0), 0);
+  const completedTotal = scopedLots.filter(l => l.status === 'completed').reduce((s, l) => s + Number(l.billAmount || 0), 0);
+  const totalLotValue = scopedLots.reduce((s, l) => s + Number(l.billAmount || 0), 0);
 
-  const ownerIn = payments.filter(p => p.type === 'Received').reduce((s, p) => s + Number(p.amount || 0), 0);
-  const partyOut = payments.filter(p => p.type === 'Paid').reduce((s, p) => s + Number(p.amount || 0), 0);
-  const balance = ownerIn - partyOut;
+  const ownerIn = scopedPayments.filter(p => p.type === 'Received').reduce((s, p) => s + Number(p.amount || 0), 0);
+  /** Cash movements shown on dashboard: owner receipts vs payouts to parties (excludes "owner" payees). */
+  const netOwnerVsParties = ownerIn - paidToNonOwnerParties;
 
-  const recentLots = [...ghausiaLots].slice(0, 12);
+  const recentLots = [...scopedLots]
+    .sort((a, b) => compareRowsByUpdatedNewestFirst(a, b, 'lot'))
+    .slice(0, 12);
 
   const partyStats = parties.map(p => {
-    const lots = ghausiaLots.filter(l => String(l.partyId ?? '') === String(p.id ?? ''));
+    const lots = scopedLots.filter(l => String(l.partyId ?? '') === String(p.id ?? ''));
     return {
       name: p.name,
       total: lots.length,
@@ -42,35 +194,53 @@ export default function Dashboard() {
     };
   }).filter(p => p.total > 0);
 
-  const maxVal = Math.max(...partyStats.map(p => p.value), 1);
-
-  const statCards = [
-    { label: 'Total Lots',     value: ghausiaLots.length,       color: '#1e40af', sub: 'All assigned lots' },
-    { label: 'Pending',        value: byStatus('pending'),       color: '#d97706', sub: 'Awaiting dispatch' },
-    { label: 'Dispatched',     value: byStatus('dispatched'),    color: '#0284c7', sub: 'Currently with party' },
-    { label: 'Received Back',  value: byStatus('received back'), color: '#dc2626', sub: 'Ready to bill owner' },
-    { label: 'Completed',      value: byStatus('completed'),     color: '#15803d', sub: 'Fully done' },
-    { label: 'Active Parties', value: partyStats.length,         color: '#7c3aed', sub: 'With assigned lots' },
+  const pipelineStatCards = [
+    { label: 'Total Lots', value: scopedLots.length, color: '#1e40af', sub: 'All assigned lots' },
+    { label: 'Pending', value: byStatus('pending'), color: '#d97706', sub: 'Awaiting dispatch' },
+    { label: 'Dispatched', value: byStatus('dispatched'), color: '#0284c7', sub: 'Currently with party' },
+    { label: 'Awaiting approval', value: byStatus('pending approval'), color: '#ca8a04', sub: 'Party submitted completion' },
+    { label: 'Rejected', value: byStatus('rejected'), color: '#b91c1c', sub: 'Needs rework' },
+    { label: 'Received Back', value: byStatus('received back'), color: '#0d9488', sub: 'Ready to bill owner' },
+    { label: 'Completed', value: byStatus('completed'), color: '#15803d', sub: 'Fully done' },
   ];
 
-  const paidToNonOwnerParties = useMemo(() => {
-      const sum = payments
-        .filter(
-          (p) =>
-            p.type === "Paid" && String(p.party || "").toLowerCase() !== "owner",
-        )
-        .reduce((s, p) => s + p.amount, 0);
-      console.log("Sum of Paid payments to non-Owner parties:", sum);
-      return sum;
-    }, [payments]);
+  const activePartyStat = {
+    label: 'Active Parties',
+    value: partyStats.length,
+    color: '#7c3aed',
+    sub: 'With assigned lots',
+  };
+
+  const formatRupee = (n) => `₨${Number(n || 0).toLocaleString()}`;
+  const formatSignedRupee = (n) => {
+    const v = Number(n || 0);
+    if (v === 0) return '₨0';
+    const abs = `₨${Math.abs(v).toLocaleString()}`;
+    return v < 0 ? `−${abs}` : abs;
+  };
 
   const finCards = [
-    { label: 'Total Lot Value',       value: totalLotValue, color: '#1e40af' },
-    { label: 'Billable to Owner',     value: billableTotal, color: '#dc2626', note: `${billable.length} lots` },
-    { label: 'Completed Revenue',     value: completedTotal, color: '#15803d' },
-    { label: 'Received from Owner',   value: ownerIn,       color: '#0284c7' },
-    { label: 'Paid to Parties',       value: paidToNonOwnerParties,      color: '#7c3aed' },
-    { label: 'Owner Balance',         value: balance,       color: balance >= 0 ? '#15803d' : '#dc2626', note: balance >= 0 ? 'Credit' : 'Debit' },
+    { label: 'Total Lot Value', value: totalLotValue, color: '#1e40af' },
+    {
+      label: 'Billable to Owner',
+      value: billableTotal,
+      color: '#0369a1',
+      note: `${billable.length} lot${billable.length === 1 ? '' : 's'} — ready to invoice`,
+    },
+    { label: 'Completed Revenue', value: completedTotal, color: '#15803d' },
+    { label: 'Received from Owner', value: ownerIn, color: '#0284c7' },
+    { label: 'Paid to Parties', value: paidToNonOwnerParties, color: '#7c3aed' },
+    {
+      label: 'Net (owner vs parties)',
+      value: netOwnerVsParties,
+      color: netOwnerVsParties >= 0 ? '#15803d' : '#dc2626',
+      note:
+        netOwnerVsParties >= 0
+          ? 'Received more than paid to parties'
+          : 'Paid parties more than received from owner',
+      signed: true,
+      highlight: true,
+    },
   ];
 
   return (
@@ -78,33 +248,98 @@ export default function Dashboard() {
       <div className="page-header">
         <div>
           <div className="page-title">Dashboard</div>
-          <div className="page-subtitle">Overview of all production and financial activity</div>
+          <div className="page-subtitle">
+            {isParty
+              ? `Welcome back${partyNameTrim ? `, ${partyNameTrim}` : ''}. Summary of your lots.`
+              : 'Overview of all production and financial activity'}
+          </div>
         </div>
+        <DateRangeSelect value={dateRange} onChange={setDateRange} />
       </div>
 
-      {/* Lot Status Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 24 }}>
-        {statCards.map(c => (
-          <div key={c.label} className="stat-card">
-            <div className="stat-label">{c.label}</div>
-            <div className="stat-value" style={{ color: c.color }}>{c.value}</div>
-            <div className="stat-sub">{c.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Financial Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
-        {finCards.map(c => (
-          <div key={c.label} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 18px', boxShadow: 'var(--shadow)' }}>
-            <div className="stat-label">{c.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: c.color, marginBottom: 2 }}>
-              ₨{Math.abs(c.value).toLocaleString()}
+      {partyMiniStatsCards?.length ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 28 }}>
+          {partyMiniStatsCards.map((c) => (
+            <div key={c.label} className="stat-card">
+              <div className="stat-label">{c.label}</div>
+              <div className="stat-value" style={{ color: c.color }}>
+                {'display' in c ? c.display : c.value}
+              </div>
+              <div className="stat-sub">{c.sub}</div>
             </div>
-            {c.note && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.note}</div>}
+          ))}
+        </div>
+      ) : null}
+
+      {!isParty && (
+        <>
+      <section style={{ marginBottom: 28 }}>
+        <div className="section-title">Production pipeline</div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(152px, 1fr))',
+            gap: 12,
+            padding: 16,
+            background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
+            border: '1px solid var(--border)',
+            borderRadius: 14,
+          }}
+        >
+          {pipelineStatCards.map((c) => (
+            <div key={c.label} className="stat-card" style={{ boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}>
+              <div className="stat-label">{c.label}</div>
+              <div className="stat-value" style={{ color: c.color, fontSize: 24 }}>
+                {c.value}
+              </div>
+              <div className="stat-sub">{c.sub}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section style={{ marginBottom: 28 }}>
+        <div className="section-title">Parties & finances</div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(168px, 1fr))',
+            gap: 12,
+          }}
+        >
+          <div className="stat-card" style={{ boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}>
+            <div className="stat-label">{activePartyStat.label}</div>
+            <div className="stat-value" style={{ color: activePartyStat.color, fontSize: 24 }}>
+              {activePartyStat.value}
+            </div>
+            <div className="stat-sub">{activePartyStat.sub}</div>
           </div>
-        ))}
-      </div>
+          {finCards.map((c) => (
+            <div
+              key={c.label}
+              className="stat-card"
+              style={{
+                boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+                ...(c.highlight
+                  ? {
+                      borderColor: netOwnerVsParties >= 0 ? '#86efac' : '#fecaca',
+                      background:
+                        netOwnerVsParties >= 0
+                          ? 'linear-gradient(145deg, #fff 0%, #f0fdf4 100%)'
+                          : 'linear-gradient(145deg, #fff 0%, #fef2f2 100%)',
+                    }
+                  : {}),
+              }}
+            >
+              <div className="stat-label">{c.label}</div>
+              <div className="stat-value" style={{ color: c.color, fontSize: 24 }}>
+                {c.signed ? formatSignedRupee(c.value) : formatRupee(c.value)}
+              </div>
+              {c.note && <div className="stat-sub">{c.note}</div>}
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 24 }}>
         {/* Status Breakdown */}
@@ -114,14 +349,14 @@ export default function Dashboard() {
             {[
               { label: 'Pending',       count: byStatus('pending'),       color: '#d97706' },
               { label: 'Dispatched',    count: byStatus('dispatched'),    color: '#0284c7' },
-              { label: 'Received Back', count: byStatus('received back'), color: '#dc2626' },
+              { label: 'Received Back', count: byStatus('received back'), color: '#0d9488' },
               { label: 'Completed',     count: byStatus('completed'),     color: '#15803d' },
             ].map(s => (
               <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                 <div style={{ width: 110, fontSize: 13, color: 'var(--text-secondary)', flexShrink: 0 }}>{s.label}</div>
                 <div style={{ flex: 1, background: '#F3F4F6', borderRadius: 6, height: 14, overflow: 'hidden' }}>
                   <div style={{
-                    width: `${ghausiaLots.length ? (s.count / ghausiaLots.length) * 100 : 0}%`,
+                    width: `${scopedLots.length ? (s.count / scopedLots.length) * 100 : 0}%`,
                     background: s.color, height: '100%', borderRadius: 6,
                     transition: 'width 0.6s ease',
                   }} />
@@ -136,7 +371,7 @@ export default function Dashboard() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Billable to Owner</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#dc2626' }}>₨{billableTotal.toLocaleString()}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#0369a1' }}>₨{billableTotal.toLocaleString()}</span>
           </div>
           <div className="card-body" style={{ padding: billable.length ? 0 : 22 }}>
             {billable.length === 0 ? (
@@ -149,61 +384,45 @@ export default function Dashboard() {
                   <tr>
                     <th>Lot / Design</th>
                     <th>Party</th>
+                    <th>Business</th>
                     <th style={{ textAlign: 'right' }}>Amount</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {billable.map(l => (
+                  {[...billable]
+                    .sort((a, b) => compareRowsByUpdatedNewestFirst(a, b, 'lot'))
+                    .map(l => (
                     <tr key={l.id}>
                       <td><span style={{ fontWeight: 600 }}>{l.lotNo || l.lotNumber}</span> / {l.designNo}</td>
                       <td style={{ color: 'var(--text-secondary)' }}>{l.partyName}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600, color: '#dc2626' }}>
+                      <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+                        {workspaceDisplayTitleForLot(l, businessOwners)}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 600, color: '#0369a1' }}>
                         ₨{Number(l.billAmount).toLocaleString()}
                       </td>
                     </tr>
-                  ))}
+                    ))}
                 </tbody>
               </table>
             )}
           </div>
         </div>
       </div>
+        </>
+      )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 18, marginBottom: 24 }}>
-        {/* Party Performance */}
-        {/* <div className="card">
-          <div className="card-header"><span className="card-title">Party Performance</span></div>
-          <div className="card-body">
-            {partyStats.length === 0 ? (
-              <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>No data yet</p>
-            ) : partyStats.map(p => (
-              <div key={p.name} style={{ marginBottom: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-                  <span style={{ fontWeight: 600 }}>{p.name}</span>
-                  <span style={{ color: 'var(--text-secondary)' }}>{p.total} lots · ₨{p.value.toLocaleString()}</span>
-                </div>
-                <div style={{ background: '#F3F4F6', borderRadius: 5, height: 10, overflow: 'hidden' }}>
-                  <div style={{
-                    width: `${(p.value / maxVal) * 100}%`,
-                    background: 'linear-gradient(90deg, #3b82f6, #1e40af)',
-                    height: '100%', borderRadius: 5,
-                  }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div> */}
-
-        {/* Recent Lots */}
+      <div style={{ marginBottom: 24 }}>
         <div className="card">
           <div className="card-header"><span className="card-title">Recent Lots</span></div>
-          <div className="card-body" style={{ padding: 0 }}>
+          <div className="card-body table-scroll" style={{ padding: 0 }}>
             <table>
               <thead>
                 <tr>
                   <th>Lot</th>
                   <th>Design</th>
-                  <th>Party</th>
+                  {!isParty && <th>Party</th>}
+                  <th style={{ minWidth: 130 }}>Business</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -212,7 +431,14 @@ export default function Dashboard() {
                   <tr key={l.id}>
                     <td style={{ fontWeight: 600 }}>{l.lotNo || l.lotNumber}</td>
                     <td>{l.designNo}</td>
-                    <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{l.partyName}</td>
+                    {!isParty && (
+                      <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{l.partyName}</td>
+                    )}
+                    <td style={{ color: 'var(--text-secondary)', fontSize: 12, minWidth: 120 }}>
+                      {workspaceDisplayTitleForLot(l, businessOwners, {
+                        shortIdFallback: isParty,
+                      })}
+                    </td>
                     <td><StatusBadge status={toTitleCase(l.status)} /></td>
                   </tr>
                 ))}
@@ -222,11 +448,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Recent Payments */}
+      {!isParty && (
       <div className="card">
         <div className="card-header"><span className="card-title">Recent Payments</span></div>
         <div className="card-body" style={{ padding: 0 }}>
-          {payments.length === 0 ? (
+          {scopedPayments.length === 0 ? (
             <p style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>No payments recorded</p>
           ) : (
             <table>
@@ -241,7 +467,10 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {[...payments].reverse().slice(0, 8).map(p => (
+                {[...scopedPayments]
+                  .sort((a, b) => compareRowsByUpdatedNewestFirst(a, b, 'payment'))
+                  .slice(0, 8)
+                  .map(p => (
                   <tr key={p.id}>
                     <td>{p.date}</td>
                     <td>
@@ -265,6 +494,7 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

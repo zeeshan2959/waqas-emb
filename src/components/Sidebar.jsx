@@ -1,7 +1,23 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useApp } from '../context/AppContext';
+import { Modal } from './UI';
+import { countPendingBillRevisionRequests } from '../utils/partyLedgerNotifications';
 
 const navItems = [
+  {
+    to: '/super-admin/pending-admins',
+    label: 'Verify administrators',
+    superOnly: true,
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        <path d="M9 12l2 2 4-4" />
+      </svg>
+    ),
+  },
   {
     to: '/', label: 'Dashboard', exact: true,
     icon: (
@@ -12,7 +28,7 @@ const navItems = [
     ),
   },
   {
-    to: '/ghausia', label: 'Ghausia Collection',
+    to: '/ghausia', label: 'Work Spaces',
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
@@ -42,6 +58,19 @@ const navItems = [
     ),
   },
   {
+    to: '/personal-khata',
+    label: 'Personal Khata',
+    partyLabel: 'Personal Khata',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+        <line x1="8" y1="7" x2="16" y2="7" />
+        <line x1="8" y1="11" x2="14" y2="11" />
+      </svg>
+    ),
+  },
+  {
     to: '/payments', label: 'Payments',
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -51,7 +80,22 @@ const navItems = [
     ),
   },
   {
-    to: '/rate-calculations', label: 'Rate Calculations',
+    to: '/review-lots',
+    label: 'Review Lots',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <path d="M12 13h4"/>
+        <path d="M12 17h4"/>
+        <circle cx="8" cy="15" r="2"/>
+      </svg>
+    ),
+  },
+  {
+    to: '/rate-calculations',
+    label: 'Rate Calculations',
+    partyLabel: 'Rate Calculator',
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/>
@@ -59,49 +103,67 @@ const navItems = [
       </svg>
     ),
   },
+  {
+    to: '/users', label: 'Users / Approvals',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <circle cx="8.5" cy="7" r="4"/>
+        <polyline points="17 11 19 13 23 9"/>
+      </svg>
+    ),
+  },
 ];
 
 export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
+  const { user, isAdmin, isSuperAdmin, logout } = useAuth();
+  const { reportingLots, reportingPartyEdits } = useApp();
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+
+  /** Lots party-submitted and waiting for admin approval — shown as a badge on "Review Lots". */
+  const reviewLotsCount = useMemo(
+    () =>
+      (Array.isArray(reportingLots) ? reportingLots : []).filter(
+        (l) => String(l?.status || '').toLowerCase().trim() === 'pending approval',
+      ).length,
+    [reportingLots],
+  );
+
+  /** Party-initiated bill-change requests awaiting admin — shown as a badge on "Party Ledger". */
+  const billRevisionCount = useMemo(
+    () => countPendingBillRevisionRequests(reportingLots, reportingPartyEdits),
+    [reportingLots, reportingPartyEdits],
+  );
   const handleNavClick = () => {
     if (window.innerWidth <= 768) {
       setSidebarOpen(false);
     }
   };
+  const visibleNavItems = navItems.filter((item) => {
+    if (user?.role === 'personal_khata') {
+      return item.to === '/personal-khata';
+    }
+    if (isSuperAdmin) {
+      if (item.superOnly) return true;
+      return item.to === '/personal-khata';
+    }
+    if (item.superOnly) {
+      return false;
+    }
+    if (isAdmin) {
+      return true;
+    }
+    return ['/', '/party-ledger', '/payments', '/personal-khata', '/rate-calculations'].includes(item.to);
+  });
 
   return (
-    <aside style={{
-      width: 230,
-      minHeight: '100vh',
-      background: '#1e1e2e',
-      display: 'flex',
-      flexDirection: 'column',
-      position: 'fixed',
-      left: 0,
-      top: 0,
-      bottom: 0,
-      zIndex: 200,
-      boxShadow: '2px 0 12px rgba(0,0,0,0.15)',
-      transform: window.innerWidth <= 768 ? (sidebarOpen ? 'translateX(0)' : 'translateX(-100%)') : 'translateX(0)',
-      transition: 'transform 0.3s ease',
-    }}>
-      {/* Mobile close button */}
-      <div style={{ 
-        display: window.innerWidth <= 768 ? 'flex' : 'none',
-        justifyContent: 'flex-end',
-        padding: '12px 16px',
-        borderBottom: '1px solid rgba(255,255,255,0.07)'
-      }}>
+    <>
+      <aside className="app-sidebar">
+      <div className="app-sidebar-close">
         <button
+          type="button"
+          aria-label="Close menu"
           onClick={() => setSidebarOpen(false)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#94a3b8',
-            fontSize: 20,
-            cursor: 'pointer',
-            padding: 4,
-            borderRadius: 4
-          }}
         >
           ×
         </button>
@@ -110,16 +172,16 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
       {/* Logo */}
       <div style={{ padding: '24px 20px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, fontWeight: 600, color: '#fff', lineHeight: 1.2 }}>
-          Ghausia
+          Seam & Grace
         </div>
         <div style={{ fontSize: 11, color: '#64748b', marginTop: 3, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-          Textile Manager
+          Grace in every stitch
         </div>
       </div>
 
       {/* Nav */}
       <nav style={{ padding: '14px 10px', flex: 1 }}>
-        {navItems.map(item => (
+        {visibleNavItems.map(item => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -142,15 +204,139 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
             })}
           >
             <span style={{ opacity: 0.85 }}>{item.icon}</span>
-            {item.label}
+            <span>{!isAdmin && !isSuperAdmin && item.partyLabel ? item.partyLabel : item.label}</span>
+            {item.to === '/review-lots' && isAdmin && reviewLotsCount > 0 && (
+              <span
+                title={`${reviewLotsCount} lot${reviewLotsCount === 1 ? '' : 's'} awaiting review`}
+                style={{
+                  marginLeft: 'auto',
+                  background: '#ef4444',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  lineHeight: 1,
+                  borderRadius: 999,
+                  padding: '3px 7px',
+                  minWidth: 18,
+                  textAlign: 'center',
+                }}
+              >
+                {reviewLotsCount > 99 ? '99+' : reviewLotsCount}
+              </span>
+            )}
+            {item.to === '/party-ledger' && isAdmin && billRevisionCount > 0 && (
+              <span
+                title={`${billRevisionCount} bill change request${billRevisionCount === 1 ? '' : 's'} pending`}
+                style={{
+                  marginLeft: 'auto',
+                  background: '#f59e0b',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  lineHeight: 1,
+                  borderRadius: 999,
+                  padding: '3px 7px',
+                  minWidth: 18,
+                  textAlign: 'center',
+                }}
+              >
+                {billRevisionCount > 99 ? '99+' : billRevisionCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
 
       {/* Footer */}
-      <div style={{ padding: '14px 18px', borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: 11, color: '#475569' }}>
-        © 2025 Ghausia Collection
+      <div style={{ padding: '14px 18px', borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: 11, color: '#64748b' }}>
+        {user && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 700 }}>{user.name}</div>
+            {user.email ? (
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 11,
+                  color: '#94a3b8',
+                  fontWeight: 500,
+                  lineHeight: 1.35,
+                  wordBreak: 'break-all',
+                }}
+                title={user.email}
+              >
+                {user.email}
+              </div>
+            ) : user.phone ? (
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 11,
+                  color: '#94a3b8',
+                  fontWeight: 500,
+                  lineHeight: 1.35,
+                }}
+                title={user.phone}
+              >
+                {user.phone}
+              </div>
+            ) : null}
+            <div style={{ marginTop: 4, textTransform: 'capitalize' }}>
+              {String(user.role || '').replace('_', ' ')}{user.partyName ? ` · ${user.partyName}` : ''}
+            </div>
+            <button
+              type="button"
+              onClick={() => setLogoutModalOpen(true)}
+              style={{
+                marginTop: 10,
+                width: '100%',
+                padding: '7px 10px',
+                borderRadius: 8,
+                border: '1px solid rgba(255,255,255,0.12)',
+                background: 'rgba(255,255,255,0.06)',
+                color: '#cbd5e1',
+                cursor: 'pointer',
+                fontSize: 12,
+              }}
+            >
+              Logout
+            </button>
+          </div>
+        )}
+        © 2026 Seam & Grace
       </div>
     </aside>
+
+    {logoutModalOpen &&
+      typeof document !== 'undefined' &&
+      createPortal(
+        <Modal
+          overlayClassName="modal-overlay-global"
+          title="Log out?"
+          onClose={() => setLogoutModalOpen(false)}
+          footer={(
+            <>
+              <button type="button" className="btn btn-ghost" onClick={() => setLogoutModalOpen(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setLogoutModalOpen(false);
+                  logout();
+                }}
+              >
+                Log out
+              </button>
+            </>
+          )}
+        >
+          <p style={{ margin: 0, fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+            Are you sure you want to logout?
+          </p>
+        </Modal>,
+        document.body,
+      )}
+    </>
   );
 }
